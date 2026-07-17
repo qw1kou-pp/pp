@@ -1,14 +1,28 @@
 import uuid
-from datetime import timezone, datetime
+from datetime import timezone, datetime, timedelta
 from typing import Any, Literal
 from pydantic import EmailStr
-from sqlalchemy import Column, DateTime, Text, UniqueConstraint, Index, text, CheckConstraint
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Text,
+    UniqueConstraint,
+    Index,
+    text,
+    CheckConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship, SQLModel
 
 
 def get_datetime_utc() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def get_repository_analysis_expiry() -> datetime:
+    """返回临时仓库分析结果的默认过期时间。"""
+
+    return get_datetime_utc() + timedelta(hours=24)
 
 
 # Shared properties
@@ -716,137 +730,72 @@ class CodeReviewPublication(
     但表名和字段保持平台通用。
     """
 
-    __tablename__ = (
-        "code_review_publication"
-    )
+    __tablename__ = "code_review_publication"
 
     __table_args__ = (
         UniqueConstraint(
             "review_run_id",
             "attempt_number",
-            name=(
-                "uq_code_review_publication"
-                "_run_attempt"
-            ),
+            name=("uq_code_review_publication_run_attempt"),
         ),
-
         CheckConstraint(
             "attempt_number >= 1",
-            name=(
-                "ck_code_review_publication"
-                "_attempt_positive"
-            ),
+            name=("ck_code_review_publication_attempt_positive"),
         ),
-
         CheckConstraint(
             "provider IN ('github')",
-            name=(
-                "ck_code_review_publication"
-                "_provider"
-            ),
+            name=("ck_code_review_publication_provider"),
         ),
-
         CheckConstraint(
-            (
-                "publication_type IN "
-                "('pull_request_review')"
-            ),
-            name=(
-                "ck_code_review_publication"
-                "_type"
-            ),
+            ("publication_type IN ('pull_request_review')"),
+            name=("ck_code_review_publication_type"),
         ),
-
         CheckConstraint(
-            (
-                "requested_event IN "
-                "('COMMENT', "
-                "'APPROVE', "
-                "'REQUEST_CHANGES')"
-            ),
-            name=(
-                "ck_code_review_publication"
-                "_event"
-            ),
+            ("requested_event IN ('COMMENT', 'APPROVE', 'REQUEST_CHANGES')"),
+            name=("ck_code_review_publication_event"),
         ),
-
         CheckConstraint(
-            (
-                "status IN "
-                "('publishing', "
-                "'succeeded', "
-                "'failed')"
-            ),
-            name=(
-                "ck_code_review_publication"
-                "_status"
-            ),
+            ("status IN ('publishing', 'succeeded', 'failed')"),
+            name=("ck_code_review_publication_status"),
         ),
-
         Index(
-            (
-                "ix_code_review_publication"
-                "_run_status"
-            ),
+            ("ix_code_review_publication_run_status"),
             "review_run_id",
             "status",
         ),
-
         Index(
-            (
-                "ix_code_review_publication"
-                "_run_created_at"
-            ),
+            ("ix_code_review_publication_run_created_at"),
             "review_run_id",
             "created_at",
         ),
-
         Index(
-            (
-                "ix_code_review_publication"
-                "_owner_created_at"
-            ),
+            ("ix_code_review_publication_owner_created_at"),
             "owner_id",
             "created_at",
         ),
-
         Index(
-            (
-                "ix_code_review_publication"
-                "_knowledge_base_created_at"
-            ),
+            ("ix_code_review_publication_knowledge_base_created_at"),
             "knowledge_base_id",
             "created_at",
         ),
-
         # 同一 Review Run 同一时刻只允许
         # 存在一个 publishing 尝试。
         Index(
-            (
-                "uq_code_review_publication"
-                "_active_attempt"
-            ),
+            ("uq_code_review_publication_active_attempt"),
             "review_run_id",
             unique=True,
             postgresql_where=text(
                 "status = 'publishing'",
             ),
         ),
-
         # 避免同一个外部 Review 被重复记录。
         Index(
-            (
-                "uq_code_review_publication"
-                "_external_review"
-            ),
+            ("uq_code_review_publication_external_review"),
             "provider",
             "external_review_id",
             unique=True,
             postgresql_where=text(
-                (
-                    "external_review_id "
-                    "IS NOT NULL"
-                ),
+                ("external_review_id IS NOT NULL"),
             ),
         ),
     )
@@ -857,17 +806,13 @@ class CodeReviewPublication(
     )
 
     knowledge_base_id: uuid.UUID = Field(
-        foreign_key=(
-            "knowledge_base.id"
-        ),
+        foreign_key=("knowledge_base.id"),
         nullable=False,
         ondelete="CASCADE",
     )
 
     review_run_id: uuid.UUID = Field(
-        foreign_key=(
-            "code_review_run.id"
-        ),
+        foreign_key=("code_review_run.id"),
         nullable=False,
         ondelete="CASCADE",
     )
@@ -950,30 +895,22 @@ class CodeReviewPublication(
     )
 
     # GitHub 成功响应
-    external_review_id: (
-        str | None
-    ) = Field(
+    external_review_id: str | None = Field(
         default=None,
         max_length=128,
     )
 
-    external_review_url: (
-        str | None
-    ) = Field(
+    external_review_url: str | None = Field(
         default=None,
         max_length=2048,
     )
 
-    external_review_state: (
-        str | None
-    ) = Field(
+    external_review_state: str | None = Field(
         default=None,
         max_length=100,
     )
 
-    external_actor: (
-        str | None
-    ) = Field(
+    external_actor: str | None = Field(
         default=None,
         max_length=255,
     )
@@ -984,9 +921,7 @@ class CodeReviewPublication(
         max_length=100,
     )
 
-    error_message: (
-        str | None
-    ) = Field(
+    error_message: str | None = Field(
         default=None,
         sa_column=Column(
             Text,
@@ -994,12 +929,8 @@ class CodeReviewPublication(
         ),
     )
 
-    created_at: (
-        datetime | None
-    ) = Field(
-        default_factory=(
-            get_datetime_utc
-        ),
+    created_at: datetime | None = Field(
+        default_factory=(get_datetime_utc),
         sa_type=(
             DateTime(
                 timezone=True,
@@ -1007,12 +938,8 @@ class CodeReviewPublication(
         ),
     )
 
-    updated_at: (
-        datetime | None
-    ) = Field(
-        default_factory=(
-            get_datetime_utc
-        ),
+    updated_at: datetime | None = Field(
+        default_factory=(get_datetime_utc),
         sa_type=(
             DateTime(
                 timezone=True,
@@ -1020,9 +947,7 @@ class CodeReviewPublication(
         ),
     )
 
-    published_at: (
-        datetime | None
-    ) = Field(
+    published_at: datetime | None = Field(
         default=None,
         sa_type=(
             DateTime(
@@ -1074,47 +999,29 @@ class CodeReviewPublicationPublic(
 
     body_hash: str
 
-    external_review_id: (
-        str | None
-    ) = None
+    external_review_id: str | None = None
 
-    external_review_url: (
-        str | None
-    ) = None
+    external_review_url: str | None = None
 
-    external_review_state: (
-        str | None
-    ) = None
+    external_review_state: str | None = None
 
-    external_actor: (
-        str | None
-    ) = None
+    external_actor: str | None = None
 
     error_code: str | None = None
 
-    error_message: (
-        str | None
-    ) = None
+    error_message: str | None = None
 
-    created_at: (
-        datetime | None
-    ) = None
+    created_at: datetime | None = None
 
-    updated_at: (
-        datetime | None
-    ) = None
+    updated_at: datetime | None = None
 
-    published_at: (
-        datetime | None
-    ) = None
+    published_at: datetime | None = None
 
 
 class CodeReviewPublicationsPublic(
     SQLModel,
 ):
-    data: list[
-        CodeReviewPublicationPublic
-    ]
+    data: list[CodeReviewPublicationPublic]
 
     count: int
 
@@ -1138,10 +1045,7 @@ class GitHubReviewPublicationPreviewPublic(
 
     successful_publication_count: int
 
-    latest_publication: (
-        CodeReviewPublicationPublic
-        | None
-    ) = None
+    latest_publication: CodeReviewPublicationPublic | None = None
 
     body_markdown: str
 
@@ -1153,9 +1057,7 @@ class GitHubReviewPublicationPreviewPublic(
 class GitHubReviewPublicationResultPublic(
     SQLModel,
 ):
-    publication: (
-        CodeReviewPublicationPublic
-    )
+    publication: CodeReviewPublicationPublic
 
     requested_event: str
 
@@ -2018,6 +1920,293 @@ class KnowledgeBasePublic(KnowledgeBaseBase):
 
 class KnowledgeBasesPublic(SQLModel):
     data: list[KnowledgeBasePublic]
+    count: int
+
+
+class RepositoryAnalysisTask(SQLModel, table=True):
+    """
+    GitHub 仓库分析后台任务。
+
+    保存仓库身份、任务执行状态、分析结果、
+    Worker 领取信息以及临时结果的过期时间。
+    """
+
+    __tablename__ = "repository_analysis_task"
+    __table_args__ = (
+        CheckConstraint(
+            ("status IN ('queued', 'running', 'completed', 'failed', 'expired')"),
+            name="ck_repository_analysis_task_status",
+        ),
+        CheckConstraint(
+            ("progress_percent >= 0 AND progress_percent <= 100"),
+            name="ck_repository_analysis_task_progress",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0",
+            name="ck_repository_analysis_task_attempt_count",
+        ),
+        Index(
+            "ix_repository_analysis_task_queue",
+            "status",
+            "created_at",
+        ),
+        Index(
+            "ix_repository_analysis_task_owner_created",
+            "owner_id",
+            "created_at",
+        ),
+    )
+
+    id: uuid.UUID = Field(
+        default_factory=uuid.uuid4,
+        primary_key=True,
+    )
+
+    owner_id: uuid.UUID = Field(
+        foreign_key="user.id",
+        nullable=False,
+        ondelete="CASCADE",
+        index=True,
+    )
+
+    knowledge_base_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="knowledge_base.id",
+        nullable=True,
+        ondelete="SET NULL",
+        index=True,
+    )
+
+    source_url: str = Field(
+        min_length=1,
+        max_length=2048,
+    )
+
+    canonical_url: str = Field(
+        min_length=1,
+        max_length=2048,
+    )
+
+    repository_owner: str = Field(
+        min_length=1,
+        max_length=100,
+    )
+
+    repository_name: str = Field(
+        min_length=1,
+        max_length=255,
+    )
+
+    repository_full_name: str = Field(
+        min_length=3,
+        max_length=356,
+        index=True,
+    )
+
+    requested_ref: str | None = Field(
+        default=None,
+        max_length=255,
+    )
+
+    default_branch: str | None = Field(
+        default=None,
+        max_length=255,
+    )
+
+    resolved_commit_sha: str | None = Field(
+        default=None,
+        max_length=64,
+    )
+
+    analysis_mode: str = Field(
+        default="overview",
+        max_length=30,
+    )
+
+    report_language: str = Field(
+        default="zh-CN",
+        max_length=20,
+    )
+
+    status: str = Field(
+        default="queued",
+        max_length=50,
+        index=True,
+    )
+
+    stage: str = Field(
+        default="queued",
+        max_length=50,
+    )
+
+    progress_percent: int = Field(
+        default=0,
+        ge=0,
+        le=100,
+    )
+
+    attempt_count: int = Field(
+        default=0,
+        ge=0,
+    )
+
+    worker_id: str | None = Field(
+        default=None,
+        max_length=255,
+    )
+
+    snapshot_source: str | None = Field(
+        default=None,
+        max_length=50,
+    )
+
+    snapshot_storage_path: str | None = Field(
+        default=None,
+        max_length=1024,
+    )
+
+    result_json: dict[str, Any] | None = Field(
+        default=None,
+        sa_column=Column(
+            JSONB,
+            nullable=True,
+        ),
+    )
+
+    evidence_json: dict[str, Any] | None = Field(
+        default=None,
+        sa_column=Column(
+            JSONB,
+            nullable=True,
+        ),
+    )
+
+    report_markdown: str | None = Field(
+        default=None,
+        sa_column=Column(
+            Text,
+            nullable=True,
+        ),
+    )
+
+    error_code: str | None = Field(
+        default=None,
+        max_length=100,
+    )
+
+    error_message: str | None = Field(
+        default=None,
+        sa_column=Column(
+            Text,
+            nullable=True,
+        ),
+    )
+
+    is_saved: bool = Field(
+        default=False,
+    )
+
+    claimed_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),
+    )
+
+    heartbeat_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),
+    )
+
+    started_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),
+    )
+
+    completed_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),
+    )
+
+    expires_at: datetime | None = Field(
+        default_factory=get_repository_analysis_expiry,
+        sa_type=DateTime(timezone=True),
+        index=True,
+    )
+
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),
+    )
+
+    updated_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),
+    )
+
+
+class RepositoryAnalysisTaskCreate(SQLModel):
+    """创建快速仓库概览任务的请求参数。"""
+
+    repository_url: str = Field(
+        min_length=1,
+        max_length=2048,
+    )
+
+    report_language: str = Field(
+        default="zh-CN",
+        max_length=20,
+    )
+
+
+class RepositoryAnalysisTaskSummaryPublic(SQLModel):
+    """任务列表使用的轻量响应。"""
+
+    id: uuid.UUID
+    repository_full_name: str
+    canonical_url: str
+
+    analysis_mode: str
+    status: str
+    stage: str
+    progress_percent: int
+
+    is_saved: bool
+    knowledge_base_id: uuid.UUID | None = None
+
+    error_code: str | None = None
+    error_message: str | None = None
+
+    expires_at: datetime | None = None
+    created_at: datetime | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class RepositoryAnalysisTaskPublic(
+    RepositoryAnalysisTaskSummaryPublic,
+):
+    """查询单个任务时返回的完整结果。"""
+
+    source_url: str
+    repository_owner: str
+    repository_name: str
+
+    requested_ref: str | None = None
+    default_branch: str | None = None
+    resolved_commit_sha: str | None = None
+
+    report_language: str
+
+    result_json: dict[str, Any] | None = None
+    evidence_json: dict[str, Any] | None = None
+    report_markdown: str | None = None
+
+    updated_at: datetime | None = None
+
+
+class RepositoryAnalysisTasksPublic(SQLModel):
+    """仓库分析任务分页列表。"""
+
+    data: list[RepositoryAnalysisTaskSummaryPublic]
     count: int
 
 
