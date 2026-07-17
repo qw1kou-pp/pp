@@ -13,6 +13,7 @@ from app.core.db import engine
 from app.models import RepositoryAnalysisTask
 from app.services.repository_analysis_processor import (
     build_placeholder_repository_analysis,
+    build_repository_snapshot_analysis,
 )
 from app.services.repository_analysis_task import (
     claim_next_repository_analysis_task,
@@ -32,6 +33,14 @@ from app.services.github_repository_client import (
 )
 from app.services.repository_analysis_processor import (
     build_repository_metadata_analysis,
+)
+from app.services.github_repository_snapshot import (
+    GitHubRepositorySnapshotDownloadError,
+    GitHubRepositorySnapshotDownloader,
+    GitHubRepositorySnapshotInvalidArchiveError,
+    GitHubRepositorySnapshotNotFoundError,
+    GitHubRepositorySnapshotTooLargeError,
+    GitHubRepositorySnapshotUnsafeArchiveError,
 )
 
 
@@ -166,6 +175,36 @@ def process_repository_analysis_task(
             metadata=metadata,
             commit=commit,
         )
+    _update_progress_or_raise(
+        task=task,
+        worker_id=worker_id,
+        stage="downloading_snapshot",
+        progress_percent=35,
+    )
+
+    with GitHubRepositorySnapshotDownloader() as downloader:
+        snapshot = downloader.download_and_extract(
+            owner=task.repository_owner,
+            repository_name=task.repository_name,
+            commit_sha=commit.sha,
+            task_id=task.id,
+        )
+
+    with Session(engine) as session:
+        snapshot_task = update_repository_snapshot_metadata(
+            session=session,
+            task_id=task.id,
+            worker_id=worker_id,
+            snapshot_source=snapshot.source,
+            snapshot_storage_path=str(
+                snapshot.repository_root,
+            ),
+        )
+
+    if snapshot_task is None:
+        raise RepositoryAnalysisWorkerError(
+            "Unable to persist repository snapshot metadata",
+        )
 
     with Session(engine) as session:
         updated_task = (
@@ -188,12 +227,13 @@ def process_repository_analysis_task(
         task=task,
         worker_id=worker_id,
         stage="building_evidence",
-        progress_percent=60,
+        progress_percent=70,
     )
 
-    output = build_repository_metadata_analysis(
+    output = build_repository_snapshot_analysis(
         task=task,
         acquisition=acquisition,
+        snapshot=snapshot,
     )
 
     _update_progress_or_raise(
@@ -309,6 +349,57 @@ def _map_repository_analysis_error(
                 "暂时无法连接 GitHub，"
                 "请稍后重新提交任务。"
             ),
+        )
+
+    if isinstance(
+        exception,
+        GitHubRepositorySnapshotNotFoundError,
+    ):
+        return (
+            "REPOSITORY_SNAPSHOT_NOT_FOUND",
+            "无法获取该 Commit 对应的仓库快照。",
+        )
+
+    if isinstance(
+        exception,
+        GitHubRepositorySnapshotTooLargeError,
+    ):
+        return (
+            "REPOSITORY_SNAPSHOT_TOO_LARGE",
+            (
+                "仓库快照超出当前系统允许的"
+                "文件大小或文件数量限制。"
+            ),
+        )
+
+    if isinstance(
+        exception,
+        GitHubRepositorySnapshotUnsafeArchiveError,
+    ):
+        return (
+            "REPOSITORY_SNAPSHOT_UNSAFE",
+            (
+                "仓库 ZIP 包含不安全的路径"
+                "或文件系统条目。"
+            ),
+        )
+
+    if isinstance(
+        exception,
+        GitHubRepositorySnapshotInvalidArchiveError,
+    ):
+        return (
+            "REPOSITORY_SNAPSHOT_INVALID",
+            "GitHub 返回的仓库快照不是有效 ZIP。",
+        )
+
+    if isinstance(
+        exception,
+        GitHubRepositorySnapshotDownloadError,
+    ):
+        return (
+            "REPOSITORY_SNAPSHOT_DOWNLOAD_FAILED",
+            "仓库快照下载失败，请稍后重试。",
         )
 
     return (

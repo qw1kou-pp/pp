@@ -7,7 +7,9 @@ from app.models import RepositoryAnalysisTask
 from app.services.github_repository_client import (
     GitHubRepositoryAcquisition,
 )
-
+from app.services.github_repository_snapshot import (
+    GitHubRepositorySnapshot,
+)
 
 @dataclass(frozen=True, slots=True)
 class RepositoryAnalysisOutput:
@@ -18,10 +20,11 @@ class RepositoryAnalysisOutput:
     report_markdown: str
 
 
-def build_repository_metadata_analysis(
+def build_repository_snapshot_analysis(
     *,
     task: RepositoryAnalysisTask,
     acquisition: GitHubRepositoryAcquisition,
+    snapshot: GitHubRepositorySnapshot,
 ) -> RepositoryAnalysisOutput:
     """
     根据真实 GitHub 元数据生成阶段性报告。
@@ -35,7 +38,18 @@ def build_repository_metadata_analysis(
 
     result_json = {
         "schema_version": "1.0",
-        "analysis_kind": "github_metadata_only",
+        "analysis_kind": "github_snapshot_acquired",
+        "snapshot": {
+            "source": snapshot.source,
+            "commit_sha": snapshot.commit_sha,
+            "compressed_bytes": (
+                snapshot.compressed_bytes
+            ),
+            "uncompressed_bytes": (
+                snapshot.uncompressed_bytes
+            ),
+            "file_count": snapshot.file_count,
+        },
         "repository": {
             "owner": metadata.owner,
             "name": metadata.name,
@@ -79,17 +93,18 @@ def build_repository_metadata_analysis(
         "capabilities": {
             "github_metadata_collected": True,
             "commit_resolved": True,
-            "snapshot_downloaded": False,
+            "snapshot_downloaded": True,
+            "snapshot_safely_extracted": True,
             "repository_scanned": False,
             "evidence_built_from_files": False,
             "llm_report_generated": False,
         },
-        "next_stage": "repository_snapshot_download",
+        "next_stage": "repository_structure_scan",
     }
 
     evidence_json = {
         "schema_version": "1.0",
-        "status": "metadata_only",
+        "status": "snapshot_acquired",
         "items": [
             {
                 "id": "E-001",
@@ -127,10 +142,26 @@ def build_repository_metadata_analysis(
                     ),
                 },
             },
+            {
+                "id": "E-003",
+                "type": "github_repository_snapshot",
+                "source": "github_zip",
+                "facts": {
+                    "commit_sha": snapshot.commit_sha,
+                    "compressed_bytes": (
+                        snapshot.compressed_bytes
+                    ),
+                    "uncompressed_bytes": (
+                        snapshot.uncompressed_bytes
+                    ),
+                    "file_count": snapshot.file_count,
+                    "safely_extracted": True,
+                },
+            },
         ],
         "notice": (
-            "当前 Evidence 只来自 GitHub REST API，"
-            "尚未从仓库文件中提取证据。"
+            "仓库固定 Commit 快照已经下载并安全解压，"
+            "但当前尚未扫描仓库文件内容。"
         ),
     }
 
@@ -156,6 +187,7 @@ def _build_chinese_report(
     *,
     task: RepositoryAnalysisTask,
     acquisition: GitHubRepositoryAcquisition,
+    snapshot: GitHubRepositorySnapshot,
 ) -> str:
     metadata = acquisition.metadata
     commit = acquisition.commit
@@ -202,6 +234,15 @@ def _build_chinese_report(
 
 - `E-001`：GitHub 仓库元数据
 - `E-002`：GitHub 固定 Commit 信息
+- `E-003`：固定 Commit ZIP 快照
+
+## 仓库快照
+
+- 快照来源：`{snapshot.source}`
+- 压缩文件大小：`{snapshot.compressed_bytes}` 字节
+- 解压后大小：`{snapshot.uncompressed_bytes}` 字节
+- 文件数量：`{snapshot.file_count}`
+- 安全解压：`True`
 
 ## 当前限制
 
@@ -216,7 +257,9 @@ def _build_chinese_report(
 
 ## 下一阶段
 
-下一阶段将下载 Commit `{commit.sha}` 对应的仓库快照，并开始确定性文件扫描。
+仓库 Commit `{commit.sha}` 的快照已经准备完成。
+下一阶段将扫描目录结构、README、依赖清单、入口文件、
+Docker 配置、CI 配置、数据库迁移和测试目录。
 """
 
 
@@ -224,6 +267,7 @@ def _build_english_report(
     *,
     task: RepositoryAnalysisTask,
     acquisition: GitHubRepositoryAcquisition,
+    snapshot: GitHubRepositorySnapshot,
 ) -> str:
     metadata = acquisition.metadata
     commit = acquisition.commit
@@ -270,6 +314,7 @@ def _build_english_report(
 
 - `E-001`: GitHub repository metadata
 - `E-002`: Resolved GitHub commit
+- `E-003`：Commit ZIP snapshot
 
 ## Current limitation
 
