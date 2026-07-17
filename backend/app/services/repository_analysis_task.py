@@ -518,20 +518,19 @@ def update_repository_analysis_progress(
     return task
 
 
-def update_repository_snapshot_metadata(
+def update_repository_resolution_metadata(
     *,
     session: Session,
     task_id: uuid.UUID,
     worker_id: str,
+    requested_ref: str,
     default_branch: str,
     resolved_commit_sha: str,
-    snapshot_source: str,
-    snapshot_storage_path: str | None,
 ) -> RepositoryAnalysisTask | None:
     """
-    保存 GitHub 元数据和本次实际分析的固定 Commit。
+    保存 GitHub 默认分支和固定 Commit。
 
-    该函数不会生成报告，只记录后续扫描所需的仓库快照信息。
+    该阶段只完成版本解析，还没有下载仓库快照。
     """
 
     task = get_claimed_repository_analysis_task(
@@ -543,45 +542,91 @@ def update_repository_snapshot_metadata(
     if task is None:
         return None
 
-    normalized_branch = str(
-        default_branch or "",
-    ).strip()
-
-    normalized_commit_sha = str(
+    normalized_ref = str(requested_ref or "").strip()
+    normalized_branch = str(default_branch or "").strip()
+    normalized_sha = str(
         resolved_commit_sha or "",
     ).strip()
 
-    normalized_snapshot_source = str(
-        snapshot_source or "",
-    ).strip()
+    if not normalized_ref:
+        raise ValueError(
+            "requested_ref must not be empty",
+        )
 
     if not normalized_branch:
         raise ValueError(
             "default_branch must not be empty",
         )
 
-    if not normalized_commit_sha:
+    if not normalized_sha:
         raise ValueError(
             "resolved_commit_sha must not be empty",
         )
 
-    if not normalized_snapshot_source:
+    current_time = get_datetime_utc()
+
+    task.requested_ref = normalized_ref
+    task.default_branch = normalized_branch
+    task.resolved_commit_sha = normalized_sha
+    task.heartbeat_at = current_time
+    task.updated_at = current_time
+
+    try:
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+    except Exception:
+        session.rollback()
+        raise
+
+    return task
+
+
+def update_repository_snapshot_metadata(
+    *,
+    session: Session,
+    task_id: uuid.UUID,
+    worker_id: str,
+    snapshot_source: str,
+    snapshot_storage_path: str,
+) -> RepositoryAnalysisTask | None:
+    """
+    保存仓库快照来源和本地路径。
+
+    下一阶段下载固定 Commit ZIP 后调用该函数。
+    """
+
+    task = get_claimed_repository_analysis_task(
+        session=session,
+        task_id=task_id,
+        worker_id=worker_id,
+    )
+
+    if task is None:
+        return None
+
+    normalized_source = str(
+        snapshot_source or "",
+    ).strip()
+
+    normalized_path = str(
+        snapshot_storage_path or "",
+    ).strip()
+
+    if not normalized_source:
         raise ValueError(
             "snapshot_source must not be empty",
         )
 
+    if not normalized_path:
+        raise ValueError(
+            "snapshot_storage_path must not be empty",
+        )
+
     current_time = get_datetime_utc()
 
-    task.default_branch = normalized_branch
-    task.resolved_commit_sha = (
-        normalized_commit_sha
-    )
-    task.snapshot_source = (
-        normalized_snapshot_source
-    )
-    task.snapshot_storage_path = (
-        snapshot_storage_path
-    )
+    task.snapshot_source = normalized_source
+    task.snapshot_storage_path = normalized_path
     task.heartbeat_at = current_time
     task.updated_at = current_time
 

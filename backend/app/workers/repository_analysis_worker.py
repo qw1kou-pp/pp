@@ -19,6 +19,19 @@ from app.services.repository_analysis_task import (
     complete_repository_analysis_task,
     fail_repository_analysis_task,
     update_repository_analysis_progress,
+    update_repository_resolution_metadata,
+)
+from app.services.github_repository_client import (
+    GitHubPrivateRepositoryNotSupportedError,
+    GitHubRepositoryClient,
+    GitHubRepositoryEmptyError,
+    GitHubRepositoryNotFoundError,
+    GitHubRepositoryRateLimitError,
+    GitHubRepositoryUnavailableError,
+    GitHubRepositoryAcquisition,
+)
+from app.services.repository_analysis_processor import (
+    build_repository_metadata_analysis,
 )
 
 
@@ -114,10 +127,62 @@ def process_repository_analysis_task(
     worker_id: str,
 ) -> None:
     """
-    执行一条已经领取的仓库分析任务。
-
-    当前调用占位处理器，后续在这里替换成正式分析流水线。
+    获取 GitHub 元数据、固定 Commit，并生成阶段性报告。
     """
+
+    _update_progress_or_raise(
+        task=task,
+        worker_id=worker_id,
+        stage="fetching_metadata",
+        progress_percent=10,
+    )
+
+    with GitHubRepositoryClient() as client:
+        metadata = client.get_repository_metadata(
+            owner=task.repository_owner,
+            repository_name=task.repository_name,
+        )
+
+        _update_progress_or_raise(
+            task=task,
+            worker_id=worker_id,
+            stage="resolving_commit",
+            progress_percent=25,
+        )
+
+        requested_ref = (
+            task.requested_ref
+            or metadata.default_branch
+        )
+
+        commit = client.get_commit(
+            owner=task.repository_owner,
+            repository_name=task.repository_name,
+            ref=requested_ref,
+        )
+
+
+        acquisition = GitHubRepositoryAcquisition(
+            metadata=metadata,
+            commit=commit,
+        )
+
+    with Session(engine) as session:
+        updated_task = (
+            update_repository_resolution_metadata(
+                session=session,
+                task_id=task.id,
+                worker_id=worker_id,
+                requested_ref=commit.requested_ref,
+                default_branch=metadata.default_branch,
+                resolved_commit_sha=commit.sha,
+            )
+        )
+
+    if updated_task is None:
+        raise RepositoryAnalysisWorkerError(
+            "Unable to persist resolved repository commit",
+        )
 
     _update_progress_or_raise(
         task=task,
@@ -126,8 +191,9 @@ def process_repository_analysis_task(
         progress_percent=60,
     )
 
-    output = build_placeholder_repository_analysis(
-        task,
+    output = build_repository_metadata_analysis(
+        task=task,
+        acquisition=acquisition,
     )
 
     _update_progress_or_raise(
@@ -149,7 +215,7 @@ def process_repository_analysis_task(
 
     if completed_task is None:
         raise RepositoryAnalysisWorkerError(
-            "The workers no longer owns the claimed task",
+            "The worker no longer owns the claimed task",
         )
 
 
@@ -182,6 +248,78 @@ def _update_progress_or_raise(
         )
 
 
+def _map_repository_analysis_error(
+    exception: Exception,
+) -> tuple[str, str]:
+    """
+    将 GitHub Client 异常转换为稳定的业务错误码。
+
+    前端不需要理解 httpx、HTTP 状态码等底层细节。
+    """
+
+    if isinstance(
+        exception,
+        GitHubRepositoryNotFoundError,
+    ):
+        return (
+            "REPOSITORY_NOT_FOUND",
+            (
+                "GitHub 仓库不存在，"
+                "或者该仓库不是公开仓库。"
+            ),
+        )
+
+    if isinstance(
+        exception,
+        GitHubPrivateRepositoryNotSupportedError,
+    ):
+        return (
+            "PRIVATE_REPOSITORY_NOT_SUPPORTED",
+            "当前版本只支持公开 GitHub 仓库。",
+        )
+
+    if isinstance(
+        exception,
+        GitHubRepositoryEmptyError,
+    ):
+        return (
+            "REPOSITORY_EMPTY",
+            "GitHub 仓库没有可分析的 Commit。",
+        )
+
+    if isinstance(
+        exception,
+        GitHubRepositoryRateLimitError,
+    ):
+        return (
+            "GITHUB_RATE_LIMITED",
+            (
+                "GitHub API 请求频率已达到限制，"
+                "请稍后重新提交任务。"
+            ),
+        )
+
+    if isinstance(
+        exception,
+        GitHubRepositoryUnavailableError,
+    ):
+        return (
+            "GITHUB_UNAVAILABLE",
+            (
+                "暂时无法连接 GitHub，"
+                "请稍后重新提交任务。"
+            ),
+        )
+
+    return (
+        "REPOSITORY_ANALYSIS_PROCESSING_FAILED",
+        (
+            f"{type(exception).__name__}: "
+            f"{exception}"
+        ),
+    )
+
+
 def _persist_task_failure(
     *,
     task: RepositoryAnalysisTask,
@@ -195,9 +333,13 @@ def _persist_task_failure(
     rollback required 状态，导致错误信息无法落库。
     """
 
-    error_message = (
-        f"{type(exception).__name__}: {exception}"
-    ).strip()
+    error_code, error_message = (
+        _map_repository_analysis_error(
+            exception,
+        )
+    )
+
+    error_message = error_message.strip()
 
     if not error_message:
         error_message = (
@@ -212,9 +354,7 @@ def _persist_task_failure(
                 session=session,
                 task_id=task.id,
                 worker_id=worker_id,
-                error_code=(
-                    "REPOSITORY_ANALYSIS_PROCESSING_FAILED"
-                ),
+                error_code=error_code,
                 error_message=error_message,
             )
 
