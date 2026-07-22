@@ -34,6 +34,7 @@ VALID_TASK_STAGES = {
     "resolving_commit",
     "downloading_snapshot",
     "scanning_repository",
+    "analyzing_code",
     "building_evidence",
     "generating_report",
     "completed",

@@ -32,8 +32,9 @@ from app.services.github_repository_client import (
     GitHubRepositoryAcquisition,
 )
 from app.services.repository_analysis_processor import (
-    build_repository_metadata_analysis,
+    build_repository_overview_analysis,
 )
+
 from app.services.github_repository_snapshot import (
     GitHubRepositorySnapshotDownloadError,
     GitHubRepositorySnapshotDownloader,
@@ -43,6 +44,13 @@ from app.services.github_repository_snapshot import (
     GitHubRepositorySnapshotUnsafeArchiveError,
 )
 
+from app.services.repository_analysis_task import update_repository_snapshot_metadata
+from app.services.repository_structure_scanner import (
+    scan_repository_structure,
+)
+from app.services.repository_code_analyzer import (
+    analyze_repository_code,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -136,9 +144,18 @@ def process_repository_analysis_task(
     worker_id: str,
 ) -> None:
     """
-    获取 GitHub 元数据、固定 Commit，并生成阶段性报告。
+    执行一条仓库分析任务。
+
+    完整流程：
+    1. 获取 GitHub 仓库元数据；
+    2. 解析固定 Commit；
+    3. 下载并安全解压仓库快照；
+    4. 扫描仓库结构；
+    5. 构建 Evidence 和概览报告；
+    6. 保存最终分析结果。
     """
 
+    # 第一阶段：获取 GitHub 仓库元数据
     _update_progress_or_raise(
         task=task,
         worker_id=worker_id,
@@ -152,6 +169,7 @@ def process_repository_analysis_task(
             repository_name=task.repository_name,
         )
 
+        # 第二阶段：将分支或 Tag 解析为固定 Commit
         _update_progress_or_raise(
             task=task,
             worker_id=worker_id,
@@ -170,42 +188,12 @@ def process_repository_analysis_task(
             ref=requested_ref,
         )
 
-
-        acquisition = GitHubRepositoryAcquisition(
-            metadata=metadata,
-            commit=commit,
-        )
-    _update_progress_or_raise(
-        task=task,
-        worker_id=worker_id,
-        stage="downloading_snapshot",
-        progress_percent=35,
+    acquisition = GitHubRepositoryAcquisition(
+        metadata=metadata,
+        commit=commit,
     )
 
-    with GitHubRepositorySnapshotDownloader() as downloader:
-        snapshot = downloader.download_and_extract(
-            owner=task.repository_owner,
-            repository_name=task.repository_name,
-            commit_sha=commit.sha,
-            task_id=task.id,
-        )
-
-    with Session(engine) as session:
-        snapshot_task = update_repository_snapshot_metadata(
-            session=session,
-            task_id=task.id,
-            worker_id=worker_id,
-            snapshot_source=snapshot.source,
-            snapshot_storage_path=str(
-                snapshot.repository_root,
-            ),
-        )
-
-    if snapshot_task is None:
-        raise RepositoryAnalysisWorkerError(
-            "Unable to persist repository snapshot metadata",
-        )
-
+    # 先保存仓库版本解析结果
     with Session(engine) as session:
         updated_task = (
             update_repository_resolution_metadata(
@@ -223,19 +211,81 @@ def process_repository_analysis_task(
             "Unable to persist resolved repository commit",
         )
 
+    # 第三阶段：下载固定 Commit 对应的 ZIP 快照
+    _update_progress_or_raise(
+        task=task,
+        worker_id=worker_id,
+        stage="downloading_snapshot",
+        progress_percent=35,
+    )
+
+    with GitHubRepositorySnapshotDownloader() as downloader:
+        snapshot = downloader.download_and_extract(
+            owner=task.repository_owner,
+            repository_name=task.repository_name,
+            commit_sha=commit.sha,
+            task_id=task.id,
+        )
+
+    # 保存快照来源和本地解压路径
+    with Session(engine) as session:
+        snapshot_task = (
+            update_repository_snapshot_metadata(
+                session=session,
+                task_id=task.id,
+                worker_id=worker_id,
+                snapshot_source=snapshot.source,
+                snapshot_storage_path=str(
+                    snapshot.repository_root,
+                ),
+            )
+        )
+
+    if snapshot_task is None:
+        raise RepositoryAnalysisWorkerError(
+            "Unable to persist repository snapshot metadata",
+        )
+
+    # 第四阶段：扫描已经下载并解压的仓库
+    _update_progress_or_raise(
+        task=task,
+        worker_id=worker_id,
+        stage="scanning_repository",
+        progress_percent=55,
+    )
+
+    scan = scan_repository_structure(
+        snapshot.repository_root,
+    )
+
+    # 第五阶段：根据扫描结果分析代码
+    _update_progress_or_raise(
+        task=task,
+        worker_id=worker_id,
+        stage="analyzing_code",
+        progress_percent=68,
+    )
+
+    code_analysis = analyze_repository_code(
+        snapshot.repository_root,
+    )
+
+    # 第六阶段：根据扫描结果构建 Evidence
     _update_progress_or_raise(
         task=task,
         worker_id=worker_id,
         stage="building_evidence",
-        progress_percent=70,
+        progress_percent=80,
     )
 
-    output = build_repository_snapshot_analysis(
+    output = build_repository_overview_analysis(
         task=task,
         acquisition=acquisition,
         snapshot=snapshot,
+        scan=scan,
     )
 
+    # 第七阶段：生成并保存最终报告
     _update_progress_or_raise(
         task=task,
         worker_id=worker_id,
@@ -244,21 +294,21 @@ def process_repository_analysis_task(
     )
 
     with Session(engine) as session:
-        completed_task = complete_repository_analysis_task(
-            session=session,
-            task_id=task.id,
-            worker_id=worker_id,
-            result_json=output.result_json,
-            evidence_json=output.evidence_json,
-            report_markdown=output.report_markdown,
+        completed_task = (
+            complete_repository_analysis_task(
+                session=session,
+                task_id=task.id,
+                worker_id=worker_id,
+                result_json=output.result_json,
+                evidence_json=output.evidence_json,
+                report_markdown=output.report_markdown,
+            )
         )
 
     if completed_task is None:
         raise RepositoryAnalysisWorkerError(
             "The worker no longer owns the claimed task",
         )
-
-
 def _update_progress_or_raise(
     *,
     task: RepositoryAnalysisTask,
