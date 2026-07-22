@@ -16,6 +16,18 @@ from app.services.repository_structure_scanner import (
 from app.services.repository_code_analyzer import (
     RepositoryCodeAnalysis,
 )
+from app.services.repository_fastapi_router_analyzer import (
+    FastApiRouterAnalysis,
+)
+from app.services.repository_backend_flow_analyzer import (
+    RepositoryBackendFlowAnalysis,
+)
+from app.services.repository_frontend_flow_analyzer import (
+    RepositoryFrontendFlowAnalysis,
+)
+from app.services.repository_analysis_compactor import (
+    compact_repository_analysis_payload,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +46,13 @@ def build_repository_overview_analysis(
     snapshot: GitHubRepositorySnapshot,
     scan: RepositoryScanResult,
     code_analysis: RepositoryCodeAnalysis,
+    fastapi_router_analysis: FastApiRouterAnalysis,
+    backend_flow_analysis: (
+        RepositoryBackendFlowAnalysis
+    ),
+    frontend_flow_analysis: (
+        RepositoryFrontendFlowAnalysis
+    ),
 ) -> RepositoryAnalysisOutput:
     """
     根据真实 GitHub 元数据生成阶段性报告。
@@ -112,6 +131,15 @@ def build_repository_overview_analysis(
         "code_analysis": (
             code_analysis.to_dict()
         ),
+        "fastapi_router_analysis": (
+            fastapi_router_analysis.to_dict()
+        ),
+        "backend_flow_analysis": (
+            backend_flow_analysis.to_dict()
+        ),
+        "frontend_flow_analysis": (
+            frontend_flow_analysis.to_dict()
+        ),
         "delivery": {
             "deployment_files": list(
                 scan.deployment_files,
@@ -142,7 +170,7 @@ def build_repository_overview_analysis(
         "deep_analysis_recommendation": (
             deep_analysis
         ),
-                "capabilities": {
+        "capabilities": {
             "github_metadata_collected": True,
             "commit_resolved": True,
             "snapshot_downloaded": True,
@@ -150,6 +178,9 @@ def build_repository_overview_analysis(
             "repository_scanned": True,
             "python_ast_analyzed": True,
             "frontend_patterns_analyzed": True,
+            "backend_business_flows_traced": True,
+            "frontend_business_flows_traced": True,
+            "full_stack_flows_matched": True,
             "evidence_built_from_files": True,
             "llm_report_generated": False,
         },
@@ -484,6 +515,275 @@ def build_repository_overview_analysis(
                     ],
                 },
             },
+            {
+                "id": "E-020",
+                "type": "fastapi_router_registration_graph",
+                "source": "python_ast",
+                "facts": {
+                    "router_definitions": [
+                        {
+                            "key": item.key,
+                            "router_kind": (
+                                item.router_kind
+                            ),
+                            "prefix": item.prefix,
+                            "prefix_resolved": (
+                                item.prefix_resolved
+                            ),
+                            "file_path": (
+                                item.file_path
+                            ),
+                            "line": item.line,
+                        }
+                        for item
+                        in fastapi_router_analysis.router_definitions
+                    ],
+                    "registrations": [
+                        {
+                            "parent_router_key": (
+                                item.parent_router_key
+                            ),
+                            "child_router_key": (
+                                item.child_router_key
+                            ),
+                            "include_prefix": (
+                                item.include_prefix
+                            ),
+                            "prefix_resolved": (
+                                item.prefix_resolved
+                            ),
+                            "file_path": (
+                                item.file_path
+                            ),
+                            "line": item.line,
+                        }
+                        for item
+                        in fastapi_router_analysis.registrations
+                    ],
+                    "resolved_routes": [
+                        {
+                            "method": item.method,
+                            "path": item.path,
+                            "path_complete": (
+                                item.path_complete
+                            ),
+                            "handler": item.handler,
+                            "file_path": (
+                                item.file_path
+                            ),
+                            "line": item.line,
+                            "registration_chain": list(
+                                item.registration_chain,
+                            ),
+                        }
+                        for item
+                        in fastapi_router_analysis.routes
+                    ],
+                },
+            },
+            {
+                "id": "E-021",
+                "type": "backend_business_flows",
+                "source": "python_ast_call_graph",
+                "facts": {
+                    "route_flows": [
+                        {
+                            "method": item.method,
+                            "path": item.path,
+                            "path_complete": (
+                                item.path_complete
+                            ),
+                            "handler": item.handler,
+                            "handler_resolved": (
+                                item.handler_resolved
+                            ),
+                            "call_paths": [
+                                {
+                                    "steps": [
+                                        {
+                                            "order": step.order,
+                                            "symbol": (
+                                                step.symbol
+                                            ),
+                                            "name": step.name,
+                                            "kind": step.kind,
+                                            "layer": step.layer,
+                                            "file_path": (
+                                                step.file_path
+                                            ),
+                                            "line": step.line,
+                                        }
+                                        for step
+                                        in path.steps
+                                    ],
+                                    "terminal_reason": (
+                                        path.terminal_reason
+                                    ),
+                                }
+                                for path
+                                in item.call_paths
+                            ],
+                            "model_usages": [
+                                {
+                                    "caller": model.caller,
+                                    "model": model.model,
+                                    "usage_kind": (
+                                        model.usage_kind
+                                    ),
+                                    "file_path": (
+                                        model.file_path
+                                    ),
+                                    "line": model.line,
+                                }
+                                for model
+                                in item.model_usages
+                            ],
+                            "database_operations": [
+                                {
+                                    "caller": operation.caller,
+                                    "operation_kind": (
+                                        operation.operation_kind
+                                    ),
+                                    "expression": (
+                                        operation.expression
+                                    ),
+                                    "file_path": (
+                                        operation.file_path
+                                    ),
+                                    "line": operation.line,
+                                }
+                                for operation
+                                in item.database_operations
+                            ],
+                            "paths_truncated": (
+                                item.paths_truncated
+                            ),
+                        }
+                        for item
+                        in backend_flow_analysis.route_flows
+                    ],
+                },
+            },
+            {
+                "id": "E-022",
+                "type": "frontend_and_full_stack_flows",
+                "source": (
+                    "javascript_typescript_static_call_graph"
+                ),
+                "facts": {
+                    "statistics": {
+                        "scanned_frontend_file_count": (
+                            frontend_flow_analysis
+                                .scanned_frontend_file_count
+                        ),
+                        "skipped_large_file_count": (
+                            frontend_flow_analysis
+                                .skipped_large_file_count
+                        ),
+                        "read_error_count": (
+                            frontend_flow_analysis
+                                .read_error_count
+                        ),
+                        "analysis_truncated": (
+                            frontend_flow_analysis
+                                .analysis_truncated
+                        ),
+                    },
+                    "pages": [
+                        {
+                            "route_path": (
+                                item.route_path
+                            ),
+                            "component_symbol": (
+                                item.component_symbol
+                            ),
+                            "source_kind": (
+                                item.source_kind
+                            ),
+                            "file_path": (
+                                item.file_path
+                            ),
+                            "line": item.line,
+                        }
+                        for item
+                        in frontend_flow_analysis.pages
+                    ],
+                    "http_operations": [
+                        {
+                            "operation_name": (
+                                item.operation_name
+                            ),
+                            "method": item.method,
+                            "path": item.path,
+                            "source_kind": (
+                                item.source_kind
+                            ),
+                            "file_path": (
+                                item.file_path
+                            ),
+                            "line": item.line,
+                        }
+                        for item
+                        in frontend_flow_analysis.http_operations
+                    ],
+                    "full_stack_flows": [
+                        {
+                            "frontend_route": (
+                                item.frontend_route
+                            ),
+                            "frontend_component": (
+                                item.frontend_component
+                            ),
+                            "frontend_call_chain": list(
+                                item.frontend_call_chain,
+                            ),
+                            "http_method": (
+                                item.http_method
+                            ),
+                            "request_path": (
+                                item.request_path
+                            ),
+                            "client_operation": (
+                                item.client_operation
+                            ),
+                            "backend_path": (
+                                item.backend_path
+                            ),
+                            "backend_handler": (
+                                item.backend_handler
+                            ),
+                            "backend_match_kind": (
+                                item.backend_match_kind
+                            ),
+                            "backend_path_complete": (
+                                item.backend_path_complete
+                            ),
+                            "backend_call_paths": [
+                                list(path)
+                                for path
+                                in item.backend_call_paths
+                            ],
+                            "data_models": list(
+                                item.data_models,
+                            ),
+                            "database_operations": list(
+                                item.database_operations,
+                            ),
+                        }
+                        for item
+                        in frontend_flow_analysis.full_stack_flows[
+                           :200
+                           ]
+                    ],
+                    "full_stack_flows_truncated": (
+                            len(
+                                frontend_flow_analysis
+                                    .full_stack_flows
+                            )
+                            > 200
+                    ),
+                },
+            },
         ],
     }
 
@@ -493,6 +793,9 @@ def build_repository_overview_analysis(
         snapshot=snapshot,
         scan=scan,
         code_analysis=code_analysis,
+        fastapi_router_analysis=fastapi_router_analysis,
+        backend_flow_analysis=backend_flow_analysis,
+        frontend_flow_analysis=frontend_flow_analysis,
     )
 
     if task.report_language == "en-US":
@@ -504,10 +807,24 @@ def build_repository_overview_analysis(
             code_analysis=code_analysis,
         )
 
+    compacted_payload = (
+        compact_repository_analysis_payload(
+            result_json=result_json,
+            evidence_json=evidence_json,
+            report_markdown=report_markdown,
+        )
+    )
+
     return RepositoryAnalysisOutput(
-        result_json=result_json,
-        evidence_json=evidence_json,
-        report_markdown=report_markdown,
+        result_json=(
+            compacted_payload.result_json
+        ),
+        evidence_json=(
+            compacted_payload.evidence_json
+        ),
+        report_markdown=(
+            compacted_payload.report_markdown
+        ),
     )
 
 
@@ -534,6 +851,9 @@ def _build_chinese_report(
     snapshot: GitHubRepositorySnapshot,
     scan: RepositoryScanResult,
     code_analysis: RepositoryCodeAnalysis,
+    fastapi_router_analysis: FastApiRouterAnalysis,
+    backend_flow_analysis: RepositoryBackendFlowAnalysis,
+    frontend_flow_analysis: RepositoryFrontendFlowAnalysis,
 ) -> str:
     metadata = acquisition.metadata
     commit = acquisition.commit
@@ -567,16 +887,227 @@ def _build_chinese_report(
         (
             f"- `{item.method} {item.path}` "
             f"→ `{item.handler}` "
-            f"（`{item.file_path}:{item.line}`）"
+            f"（`{item.file_path}:{item.line}`，"
+            f"完整路径：`{item.path_complete}`）"
         )
         for item
-        in code_analysis.backend_routes[:30]
+        in fastapi_router_analysis.routes[:40]
     ]
 
     backend_routes = (
         "\n".join(backend_route_lines)
         if backend_route_lines
         else "- 暂未识别到 FastAPI 路由"
+    )
+
+    backend_flow_sections: list[str] = []
+
+    for route_flow in (
+        backend_flow_analysis.route_flows[:20]
+    ):
+        route_title = (
+            f"### `{route_flow.method} "
+            f"{route_flow.path}`"
+        )
+
+        lines = [
+            route_title,
+            "",
+            (
+                f"- Handler："
+                f"`{route_flow.handler}`"
+            ),
+            (
+                f"- Handler 已解析："
+                f"`{route_flow.handler_resolved}`"
+            ),
+        ]
+
+        if route_flow.call_paths:
+            lines.extend(
+                [
+                    "",
+                    "静态调用路径：",
+                ],
+            )
+
+            for path_index, call_path in enumerate(
+                route_flow.call_paths[:5],
+                start=1,
+            ):
+                chain = " → ".join(
+                    (
+                        f"{step.name}"
+                        f"[{step.layer}]"
+                    )
+                    for step
+                    in call_path.steps
+                )
+
+                lines.append(
+                    (
+                        f"- 路径 {path_index}："
+                        f"{chain}"
+                    ),
+                )
+        else:
+            lines.extend(
+                [
+                    "",
+                    "- 未解析到内部调用路径",
+                ],
+            )
+
+        if route_flow.model_usages:
+            lines.extend(
+                [
+                    "",
+                    "涉及的数据模型：",
+                ],
+            )
+
+            for model in (
+                route_flow.model_usages[:10]
+            ):
+                lines.append(
+                    (
+                        f"- `{model.model}` "
+                        f"（{model.usage_kind}，"
+                        f"`{model.file_path}:"
+                        f"{model.line}`）"
+                    ),
+                )
+
+        if route_flow.database_operations:
+            lines.extend(
+                [
+                    "",
+                    "可能的数据库操作：",
+                ],
+            )
+
+            for operation in (
+                route_flow
+                .database_operations[:15]
+            ):
+                lines.append(
+                    (
+                        f"- "
+                        f"`{operation.expression}` "
+                        f"→ "
+                        f"`{operation.operation_kind}` "
+                        f"（`{operation.file_path}:"
+                        f"{operation.line}`）"
+                    ),
+                )
+
+        backend_flow_sections.append(
+            "\n".join(lines),
+        )
+
+    backend_flows_markdown = (
+        "\n\n".join(
+            backend_flow_sections,
+        )
+        if backend_flow_sections
+        else "- 暂未生成后端业务调用链"
+    )
+
+    full_stack_flow_sections: list[str] = []
+
+    for flow in (
+            frontend_flow_analysis.full_stack_flows[:20]
+    ):
+        frontend_chain = " → ".join(
+            symbol.split(":")[-1]
+            for symbol
+            in flow.frontend_call_chain
+        )
+
+        if not frontend_chain:
+            frontend_chain = "未解析"
+
+        if flow.backend_call_paths:
+            backend_chain = " → ".join(
+                symbol.split(".")[-1]
+                for symbol
+                in flow.backend_call_paths[0]
+            )
+        else:
+            backend_chain = "未解析到后端内部调用链"
+
+        models_text = (
+            "、".join(
+                f"`{model}`"
+                for model
+                in flow.data_models
+            )
+            if flow.data_models
+            else "未识别"
+        )
+
+        database_text = (
+            "、".join(
+                f"`{operation}`"
+                for operation
+                in flow.database_operations
+            )
+            if flow.database_operations
+            else "未识别"
+        )
+
+        lines = [
+            (
+                f"### `{flow.frontend_route}`"
+            ),
+            "",
+            (
+                f"- 前端调用：{frontend_chain}"
+            ),
+            (
+                f"- HTTP 请求："
+                f"`{flow.http_method} "
+                f"{flow.request_path}`"
+            ),
+            (
+                f"- Client 操作："
+                f"`{flow.client_operation}`"
+            ),
+            (
+                f"- 后端路由："
+                f"`{flow.backend_path or '未匹配'}`"
+            ),
+            (
+                f"- 后端 Handler："
+                f"`{flow.backend_handler or '未匹配'}`"
+            ),
+            (
+                f"- 匹配方式："
+                f"`{flow.backend_match_kind}`"
+            ),
+            (
+                f"- 后端调用：{backend_chain}"
+            ),
+            (
+                f"- 数据模型：{models_text}"
+            ),
+            (
+                f"- 数据库操作：{database_text}"
+            ),
+        ]
+
+        full_stack_flow_sections.append(
+            "\n".join(lines),
+        )
+
+    full_stack_flows_markdown = (
+        "\n\n".join(
+            full_stack_flow_sections,
+        )
+        if full_stack_flow_sections
+        else (
+            "- 暂未恢复出完整的前端到后端业务闭环"
+        )
     )
 
     model_lines = [
@@ -723,44 +1254,67 @@ def _build_chinese_report(
 
 {backend_routes}
 
-证据来源：Python AST `[E-014]`。
+证据来源：FastAPI Router 注册图 `[E-020]`。
 
-## 六、数据模型
+其中“完整路径=False”表示部分前缀来自动态配置，
+静态分析无法确认其最终运行值。
+
+## 六、后端业务调用链
+
+{backend_flows_markdown}
+
+证据来源：Python AST、Import 解析和调用图遍历 `[E-021]`。
+
+> 这些结果是静态分析结果。动态依赖注入、运行时分派、
+> 工厂模式和反射调用可能无法完整恢复。
+
+## 前后端业务闭环
+
+{full_stack_flows_markdown}
+
+证据来源：前端静态调用图、生成客户端请求配置、
+FastAPI Router 注册图和后端调用图 `[E-022]`。
+
+> `exact` 表示前后端路径完整匹配；
+> `suffix` 表示忽略统一 API 前缀后唯一匹配；
+> `unmatched` 表示当前静态信息不足，系统没有强行猜测。
+
+## 七、数据模型
 
 {models}
 
 证据来源：Python AST `[E-015]`。
 
-## 七、前端 API 请求
+## 八、前端 API 请求
 
 {frontend_calls}
 
 证据来源：JavaScript/TypeScript 静态扫描 `[E-018]`。
 
-## 八、可能的业务请求闭环
+## 九、可能的业务请求闭环
 
 {business_flows}
 
 以上闭环根据 HTTP 方法和路径确定性匹配 `[E-019]`，
 尚未经过浏览器或运行时请求验证。
 
-## 九、部署方式
+## 十、部署方式
 
 {deployment}
 
-## 十、持续集成
+## 十一、持续集成
 
 {ci_files}
 
-## 十一、数据库与迁移
+## 十二、数据库与迁移
 
 {migrations}
 
-## 十二、测试结构
+## 十三、测试结构
 
 {tests}
 
-## 十三、仓库规模
+## 十四、仓库规模
 
 - 快照文件数量：`{snapshot.file_count}`
 - 实际扫描文件数量：`{scan.scanned_file_count}`
@@ -770,7 +1324,7 @@ def _build_chinese_report(
 
 {scan_notice}
 
-## 十四、学习难度初步判断
+## 十五、学习难度初步判断
 
 - 难度：**{complexity["label"]}**
 - 启发式分数：`{complexity["score"]}`
@@ -782,7 +1336,7 @@ def _build_chinese_report(
 > 该判断只基于文件规模、语言数量和目录结构，
 > 不代表项目代码质量。
 
-## 十五、是否值得继续分析
+## 十六、是否值得继续分析
 
 结论：**{recommendation_text}**
 
@@ -790,7 +1344,7 @@ def _build_chinese_report(
 
 {chr(10).join(f"- {reason}" for reason in recommendation["reasons"]) or "- 当前可分析结构较少"}
 
-## 十六、当前限制
+## 十七、当前限制
 
 本阶段尚未完成：
 
@@ -805,6 +1359,7 @@ def _build_chinese_report(
 下一阶段将以入口文件、路由、Service 和模型文件为起点，
 进行深度架构与业务调用链分析。
 """
+
 
 def _build_english_report(
     *,
