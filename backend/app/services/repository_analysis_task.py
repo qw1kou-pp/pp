@@ -35,6 +35,8 @@ VALID_TASK_STAGES = {
     "downloading_snapshot",
     "scanning_repository",
     "analyzing_code",
+    "tracing_backend_flows",
+    "tracing_frontend_flows",
     "building_evidence",
     "generating_report",
     "completed",

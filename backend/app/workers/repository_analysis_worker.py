@@ -44,12 +44,28 @@ from app.services.github_repository_snapshot import (
     GitHubRepositorySnapshotUnsafeArchiveError,
 )
 
-from app.services.repository_analysis_task import update_repository_snapshot_metadata
+from app.services.repository_analysis_task import (
+    update_repository_snapshot_metadata,
+)
+
 from app.services.repository_structure_scanner import (
     scan_repository_structure,
 )
+
 from app.services.repository_code_analyzer import (
     analyze_repository_code,
+)
+
+from app.services.repository_fastapi_router_analyzer import (
+    analyze_fastapi_router_graph,
+)
+
+from app.services.repository_backend_flow_analyzer import (
+    analyze_repository_backend_flows,
+)
+
+from app.services.repository_frontend_flow_analyzer import (
+    analyze_repository_frontend_flows,
 )
 
 logger = logging.getLogger(__name__)
@@ -270,12 +286,53 @@ def process_repository_analysis_task(
         snapshot.repository_root,
     )
 
+    fastapi_router_analysis = (
+        analyze_fastapi_router_graph(
+            snapshot.repository_root,
+        )
+    )
+
+    _update_progress_or_raise(
+        task=task,
+        worker_id=worker_id,
+        stage="tracing_backend_flows",
+        progress_percent=75,
+    )
+
+    backend_flow_analysis = (
+        analyze_repository_backend_flows(
+            snapshot.repository_root,
+            fastapi_router_analysis=(
+                fastapi_router_analysis
+            ),
+        )
+    )
+
+    _update_progress_or_raise(
+        task=task,
+        worker_id=worker_id,
+        stage="tracing_frontend_flows",
+        progress_percent=82,
+    )
+
+    frontend_flow_analysis = (
+        analyze_repository_frontend_flows(
+            snapshot.repository_root,
+            fastapi_router_analysis=(
+                fastapi_router_analysis
+            ),
+            backend_flow_analysis=(
+                backend_flow_analysis
+            ),
+        )
+    )
+
     # 第六阶段：根据扫描结果构建 Evidence
     _update_progress_or_raise(
         task=task,
         worker_id=worker_id,
         stage="building_evidence",
-        progress_percent=80,
+        progress_percent=88,
     )
 
     output = build_repository_overview_analysis(
@@ -283,6 +340,16 @@ def process_repository_analysis_task(
         acquisition=acquisition,
         snapshot=snapshot,
         scan=scan,
+        code_analysis=code_analysis,
+        fastapi_router_analysis=(
+            fastapi_router_analysis
+        ),
+        backend_flow_analysis=(
+            backend_flow_analysis
+        ),
+        frontend_flow_analysis=(
+            frontend_flow_analysis
+        ),
     )
 
     # 第七阶段：生成并保存最终报告
@@ -290,7 +357,7 @@ def process_repository_analysis_task(
         task=task,
         worker_id=worker_id,
         stage="generating_report",
-        progress_percent=90,
+        progress_percent=94,
     )
 
     with Session(engine) as session:
