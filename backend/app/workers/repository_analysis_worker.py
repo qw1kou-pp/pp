@@ -68,6 +68,10 @@ from app.services.repository_frontend_flow_analyzer import (
     analyze_repository_frontend_flows,
 )
 
+from app.services.repository_snapshot_lifecycle import (
+    cleanup_repository_analysis_task_snapshot,
+)
+
 logger = logging.getLogger(__name__)
 
 _shutdown_event = Event()
@@ -572,6 +576,32 @@ def _persist_task_failure(
                 "because task ownership was lost",
                 task.id,
             )
+
+            return
+
+        try:
+            with Session(engine) as cleanup_session:
+                cleanup_action = (
+                    cleanup_repository_analysis_task_snapshot(
+                        session=cleanup_session,
+                        task_id=task.id,
+                        force_reason="failed_task",
+                    )
+                )
+
+            if cleanup_action.reference_cleared:
+                logger.info(
+                    "Cleaned repository snapshot "
+                    "for failed task %s",
+                    task.id,
+                )
+        except Exception:
+            logger.exception(
+                "Could not clean repository snapshot "
+                "for failed task %s",
+                task.id,
+            )
+
     except Exception:
         logger.exception(
             "Could not persist failure state for task %s",
