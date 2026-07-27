@@ -1,71 +1,72 @@
 # RepoGuard
 
-RepoGuard is a full-stack FastAPI + React platform for pulling GitHub repositories into a project workspace, running an initial repository analysis, and then turning selected repositories into knowledge-base material for deeper RAG/Agent-style exploration.
+RepoGuard 是一个基于 FastAPI + React 的 GitHub 仓库分析与知识库平台。它的目标是帮助你把感兴趣的 GitHub 项目拉取到本地平台中，先做初步分析，再把值得深入研究的项目导入知识库，后续通过 RAG 或 Agent 对项目进行更细致的理解和问答。
 
-The intended workflow is simple:
+核心使用流程：
 
-1. Paste a GitHub repository URL.
-2. Let the backend clone, snapshot, and analyze the repository.
-3. Review the initial analysis and decide whether the project is worth deeper study.
-4. Import selected repository content into a knowledge base.
-5. Generate embeddings and ask questions about the project through RAG or Agent tools.
+1. 输入一个 GitHub 仓库地址。
+2. 后端自动拉取、快照并分析仓库。
+3. 查看项目初步分析结果，判断这个项目是否值得继续研究。
+4. 将选中的仓库内容导入知识库。
+5. 生成向量索引。
+6. 通过 RAG 或 Agent 继续提问，比如项目是做什么的、依赖什么、有哪些功能、代码结构如何。
 
-## Features
+## 功能
 
-- GitHub repository submission and asynchronous analysis tasks.
-- Repository analysis worker with lease, retry, recovery, and fault-injection acceptance support.
-- Knowledge-base management for uploaded documents and repository imports.
-- RAG chat and Agent chat surfaces for project-level Q&A.
-- Code-review comparison workspace for structured review results.
-- Admin/user authentication based on the original FastAPI full-stack template.
-- Docker Compose development stack with PostgreSQL, backend, worker, frontend, Adminer, and Mailcatcher.
+- 提交 GitHub 仓库地址并创建异步分析任务。
+- 仓库分析 Worker，支持租约、重试、恢复和故障注入验收测试。
+- 知识库管理，支持上传文档和导入仓库内容。
+- RAG 聊天和 Agent 聊天，用于围绕项目内容进行问答。
+- 代码审查对比工作台，用于查看结构化 review 结果。
+- 基于原 FastAPI 全栈模板的用户登录、管理员和权限体系。
+- Docker Compose 本地开发环境，包含 PostgreSQL、后端、Worker、前端、Adminer 和 Mailcatcher。
 
-## Tech Stack
+## 技术栈
 
-- Backend: FastAPI, SQLModel, Alembic, PostgreSQL, Pytest.
-- Frontend: React, TypeScript, Vite, TanStack Router, Tailwind CSS, shadcn-style components.
-- Runtime: Docker Compose for the full local stack.
-- Package tools: `uv` for Python and `bun` for frontend scripts.
+- 后端：FastAPI、SQLModel、Alembic、PostgreSQL、Pytest。
+- 前端：React、TypeScript、Vite、TanStack Router、Tailwind CSS、shadcn 风格组件。
+- 运行环境：Docker Compose。
+- 包管理工具：后端使用 `uv`，前端使用 `bun`。
 
-## Requirements
+## 环境要求
 
-- Docker Desktop with Docker Compose.
-- Git.
-- Optional for local development without Docker: Python 3.10+, `uv`, and `bun`.
+- Docker Desktop，并支持 Docker Compose。
+- Git。
+- 可选本地开发工具：Python 3.10+、`uv`、`bun`。
 
-## Quick Start
+## 快速启动
 
 ```bash
-git clone <your-repository-url>
+git clone <你的仓库地址>
 cd full-stack-fastapi-template-master
 cp .env.example .env
 docker compose up --build
 ```
 
-After the services are ready:
+服务启动后可以访问：
 
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:8000
-- API docs: http://localhost:8000/docs
-- Adminer: http://localhost:8080
-- Mailcatcher: http://localhost:1080
+- 前端：http://localhost:5173
+- 后端 API：http://localhost:8000
+- API 文档：http://localhost:8000/docs
+- Adminer：http://localhost:8080
+- Mailcatcher：http://localhost:1080
 
-Default local admin account from `.env.example`:
+`.env.example` 中默认的本地管理员账号：
 
-- Email: `admin@example.com`
-- Password: `changethis`
+- 邮箱：`admin@example.com`
+- 密码：`changethis`
 
-Change these values in `.env` before exposing the project outside your local machine.
+如果要部署到公网，请务必修改 `.env` 中的 `SECRET_KEY`、`FIRST_SUPERUSER_PASSWORD`、`POSTGRES_PASSWORD` 等敏感配置。
 
-## Optional Configuration
+## 可选配置
 
-Public GitHub repositories can be analyzed without a token, but GitHub rate limits will be stricter. Add this when needed:
+公开 GitHub 仓库可以不配置 Token 直接分析，但 GitHub API 会有更严格的限流。建议按需配置：
 
 ```env
 GITHUB_TOKEN=github_pat_xxx
 ```
 
-RAG, Agent answers, and embedding generation require provider settings that match your backend configuration:
+RAG、Agent 回答和向量生成需要配置对应的大模型与 Embedding 服务：
 
 ```env
 LLM_API_KEY=
@@ -76,59 +77,59 @@ EMBEDDING_API_BASE=
 EMBEDDING_MODEL=
 ```
 
-Keep secrets only in `.env` or your deployment secret manager. Do not commit `.env`.
+请只把真实密钥放在本地 `.env` 或部署平台的 Secret Manager 中，不要提交到 GitHub。
 
-## First Run Workflow
+## 第一次使用流程
 
-1. Open http://localhost:5173 and log in.
-2. Go to the repository analysis page.
-3. Submit a public GitHub repository URL.
-4. Wait for the repository analysis worker to finish the task.
-5. Review the project summary, dependency hints, file statistics, and analysis status.
-6. If the project is interesting, import or bind the repository content into a knowledge base.
-7. Generate embeddings for the knowledge base.
-8. Ask project questions through the knowledge-base RAG or Agent chat interface.
+1. 打开 http://localhost:5173 并登录。
+2. 进入仓库分析页面。
+3. 输入一个公开的 GitHub 仓库地址。
+4. 等待仓库分析 Worker 完成任务。
+5. 查看项目摘要、依赖信息、文件统计和分析状态。
+6. 如果这个项目值得深入研究，将仓库内容导入或绑定到知识库。
+7. 为知识库生成 Embedding。
+8. 在知识库的 RAG 或 Agent 聊天界面继续提问。
 
-## Useful Commands
+## 常用命令
 
-Start the full development stack:
+启动完整开发环境：
 
 ```bash
 docker compose up --build
 ```
 
-View service status:
+查看服务状态：
 
 ```bash
 docker compose ps
 ```
 
-Follow backend and repository worker logs:
+查看后端和仓库分析 Worker 日志：
 
 ```bash
 docker compose logs -f backend repository-analysis-worker
 ```
 
-Stop services:
+停止服务：
 
 ```bash
 docker compose down
 ```
 
-Stop services and remove local database volumes:
+停止服务并删除本地数据库卷：
 
 ```bash
 docker compose down -v
 ```
 
-Build the frontend locally:
+本地构建前端：
 
 ```bash
 cd frontend
 bun run build
 ```
 
-Check backend import and Alembic configuration locally:
+本地检查后端入口和 Alembic 配置：
 
 ```bash
 cd backend
@@ -136,26 +137,26 @@ uv run python -c "import app.main"
 uv run alembic check
 ```
 
-Validate Docker Compose configuration:
+校验 Docker Compose 配置：
 
 ```bash
 docker compose -f compose.yml -f compose.override.yml config --quiet
 ```
 
-Run repository recovery acceptance compose validation:
+校验仓库恢复验收测试的 Compose 配置：
 
 ```bash
 docker compose -f compose.yml -f docker-compose.repository-recovery.yml --profile acceptance config --quiet
 ```
 
-## GitHub Upload Checklist
+## 上传 GitHub 前检查
 
-- Commit `.env.example`, not `.env`.
-- Do not commit `backend/storage/`, local repository snapshots, database dumps, `secrets/`, or generated reports.
-- Keep API keys and tokens in local `.env` files or GitHub Actions secrets.
-- Run the frontend build and backend checks before pushing important changes.
-- Update this README whenever the startup flow, required variables, or service ports change.
+- 提交 `.env.example`，不要提交 `.env`。
+- 不要提交 `backend/storage/`、本地仓库快照、数据库 dump、`secrets/` 或生成的报告文件。
+- API Key、GitHub Token、数据库密码等只放在本地 `.env` 或 GitHub Actions Secrets 中。
+- 重要改动推送前，建议至少跑一次前端构建和后端配置检查。
+- 如果启动方式、端口、环境变量发生变化，请同步更新 README。
 
-## Notes
+## 说明
 
-This project started from the FastAPI full-stack template, but the current application is focused on GitHub repository analysis and knowledge-base driven project understanding.
+这个项目最初基于 FastAPI Full Stack Template，但当前业务重点已经调整为 GitHub 仓库分析、知识库管理和项目理解辅助。
