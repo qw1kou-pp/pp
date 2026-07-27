@@ -452,12 +452,62 @@ def format_tool_calls_for_react(
 def build_react_step_prompt(
     *,
     question: str,
-    tool_calls: list[AgentToolCallPublic],
+    tool_calls: list[
+        AgentToolCallPublic
+    ],
     used_steps: int,
     max_steps: int,
+    repository_analysis_task_id:
+        uuid.UUID | None = None,
 ) -> str:
-    previous_steps = format_tool_calls_for_react(tool_calls=tool_calls)
-    tools_section = build_agent_tools_prompt_section()
+    previous_steps = (
+        format_tool_calls_for_react(
+            tool_calls=tool_calls,
+        )
+    )
+
+    repository_scoped = (
+        repository_analysis_task_id
+        is not None
+    )
+
+    tools_section = (
+        build_agent_tools_prompt_section(
+            repository_scoped=(
+                repository_scoped
+            ),
+        )
+    )
+
+    if repository_scoped:
+        scope_instruction = (
+            "当前是仓库范围 Agent。\n"
+            "你只能使用当前仓库分析任务导入的"
+            "固定 Commit 代码资料。\n"
+            "不得请求、推断或引用当前任务范围"
+            "之外的文档。\n"
+            "当前仓库分析任务 ID："
+            f"{repository_analysis_task_id}"
+        )
+
+        history_rule = (
+            "1. 如果用户询问之前、历史、"
+            "上次、问过或回答过，使用 "
+            "search_rag_history。"
+            "该工具只会搜索当前仓库分析"
+            "任务对应的历史。"
+        )
+    else:
+        scope_instruction = (
+            "当前是普通知识库 Agent，"
+            "可以使用当前知识库范围内的工具。"
+        )
+        history_rule = (
+            "1. 如果用户询问之前、历史、"
+            "上次、问过或回答过，使用 "
+            "search_rag_history。"
+            "该工具只会搜索普通知识库历史。"
+        )
 
     return f"""
 你是一个知识库 Agent 的工具决策器。
@@ -467,21 +517,25 @@ def build_react_step_prompt(
 当前已经使用步骤数：{used_steps}
 最大步骤数：{max_steps}
 
+当前工作范围：
+
+{scope_instruction}
+
 可用工具：
 
 {tools_section}
 
 选择原则：
-1. 如果用户问“之前、历史、上次、问过、回答过”，优先使用 search_rag_history。
+{history_rule}
 2. 如果用户问“有哪些文档、知识库里有什么文件”，使用 list_documents。
-3. 如果用户问“代码文件、源码文件、项目结构、仓库文件、有哪些 py/ts/tsx/js/java/go 文件”，优先使用 list_code_files。
-4. 如果用户问具体代码逻辑、函数、类、方法、组件、变量、调用关系、报错、bug、某个逻辑在哪里实现，优先使用 search_code。
-5. 如果用户问某个函数/类/变量/组件“在哪里定义、在哪里使用、哪里调用、哪些文件引用、调用关系”，优先使用 find_code_references。
-6. 如果已经通过 search_code 找到相关代码片段，并且用户需要完整文件、完整逻辑、所在文件上下文、整个实现，继续使用 read_code_file。
-7. 如果用户问普通知识内容或非代码文档内容，使用 search_knowledge_base。
-8. 如果用户要求“详细、完整、流程、步骤、总结、原理”，并且已经有 search_knowledge_base 或 search_code 的结果，可以继续使用 read_document_chunks 或 read_code_file。
-9. 如果用户要求总结某个文档、Word、PDF、docx、最近上传的文件，优先使用 summarize_document。
-10. 不要重复调用同一个工具，除非非常有必要。
+3. 如果用户问代码文件列表、项目模块或代码仓库结构，优先使用 list_code_files。
+4. 如果用户问具体知识内容，使用 search_knowledge_base。
+5. 如果用户问函数、类、变量或代码实现位置，优先使用 search_code。
+6. 如果用户问某个符号在哪里调用、引用或使用，优先使用 find_code_references。
+7. 如果用户要求读取完整代码文件，或者检索结果上下文不足，可以使用 read_code_file。
+8. 如果用户要求“详细、完整、流程、步骤、总结、原理”，并且已经有检索结果，可以继续使用 read_document_chunks。
+9. 如果用户要求总结某个文档、Word、PDF、docx 或最近上传的文件，优先使用 summarize_document。
+10. 不要重复调用同一个工具，除非查询条件明显不同且确实有必要。
 11. 如果已经获得足够信息，请选择 final_answer。
 12. 你必须只返回 JSON，不要使用 markdown，不要解释。
 
@@ -504,10 +558,17 @@ def build_react_step_prompt(
 请决定下一步 action：
 """.strip()
 
-
 def normalize_react_action(
-    raw_action: dict[str, Any] | None,
-) -> tuple[str, dict[str, Any], str]:
+    raw_action:
+        dict[str, Any] | None,
+    *,
+    repository_scoped:
+        bool = False,
+) -> tuple[
+    str,
+    dict[str, Any],
+    str,
+]:
     if not raw_action:
         return "search_knowledge_base", {}, "LLM action 解析失败，使用默认检索工具。"
 
@@ -520,7 +581,12 @@ def normalize_react_action(
 
     reason = str(raw_action.get("reason", "")).strip()
 
-    allowed_actions = get_agent_tool_names()
+    allowed_actions = (
+        get_agent_tool_names(
+            repository_scoped=
+            repository_scoped,
+        )
+    )
 
     if action not in allowed_actions:
         return "search_knowledge_base", {}, "LLM 返回了未知 action，使用默认检索工具。"
@@ -533,11 +599,17 @@ def build_fallback_react_action(
     question: str,
     tool_calls: list[AgentToolCallPublic],
     sources: list[RagChatSource],
+    repository_scoped: bool = False,
 ) -> tuple[str, dict[str, Any], str]:
     used_tool_names = {tool_call.tool_name for tool_call in tool_calls}
 
     if not tool_calls:
-        if should_search_rag_history(question):
+        if (
+            not repository_scoped
+            and should_search_rag_history(
+                question,
+            )
+        ):
             return (
                 "search_rag_history",
                 {"query": question},
@@ -626,23 +698,6 @@ def build_fallback_react_action(
                 "max_chars": 20000,
             },
             "规则兜底：问题需要读取完整代码文件。",
-        )
-
-    if (
-            sources
-            and "read_code_file" not in used_tool_names
-            and should_read_code_file(question)
-    ):
-        first_source = sources[0]
-
-        return (
-            "read_code_file",
-            {
-                "document_id": str(first_source.document_id),
-                "max_chunks": 50,
-                "max_chars": 20000,
-            },
-            "规则兜底：问题需要完整代码文件上下文。",
         )
 
     if (
@@ -1059,10 +1114,26 @@ def run_knowledge_base_agent(
     max_steps: int,
     semantic_weight: float,
     keyword_weight: float,
+    repository_analysis_task_id: uuid.UUID | None = None,
 ) -> tuple[str, list[AgentToolCallPublic], list[RagChatSource], list[str]]:
     trace: list[str] = []
     tool_calls: list[AgentToolCallPublic] = []
     all_sources: list[RagChatSource] = []
+
+    repository_scoped = (
+            repository_analysis_task_id
+            is not None
+    )
+
+    if repository_scoped:
+        trace.append(
+            "repository_scope="
+            f"{repository_analysis_task_id}",
+        )
+    else:
+        trace.append(
+            "repository_scope=none",
+        )
 
     semantic_weight, keyword_weight = normalize_agent_weights(
         semantic_weight=semantic_weight,
@@ -1083,18 +1154,26 @@ def run_knowledge_base_agent(
             tool_calls=tool_calls,
             used_steps=step_index,
             max_steps=max_steps,
+            repository_analysis_task_id=repository_analysis_task_id,
         )
 
         try:
             raw_action_text = call_llm(react_prompt)
             trace.append(f"react_step_{step_index + 1}_planner_called")
             raw_action = extract_json_object(raw_action_text)
-            action, arguments, reason = normalize_react_action(raw_action)
+            action, arguments, reason = (
+                normalize_react_action(
+                    raw_action,
+                    repository_scoped=
+                    repository_scoped,
+                )
+            )
         except LLMError:
             action, arguments, reason = build_fallback_react_action(
                 question=question,
                 tool_calls=tool_calls,
                 sources=all_sources,
+                repository_scoped=repository_scoped,
             )
             trace.append(f"react_step_{step_index + 1}_planner_failed_use_fallback")
 
@@ -1104,6 +1183,7 @@ def run_knowledge_base_agent(
                     question=question,
                     tool_calls=tool_calls,
                     sources=all_sources,
+                    repository_scoped= repository_scoped,
                 )
             )
 
@@ -1125,12 +1205,18 @@ def run_knowledge_base_agent(
 
         tool_context = AgentToolContext(
             session=session,
-            knowledge_base_id=knowledge_base_id,
+            knowledge_base_id=
+            knowledge_base_id,
+            repository_analysis_task_id=
+            repository_analysis_task_id,
             question=question,
             top_k=top_k,
-            semantic_weight=semantic_weight,
-            keyword_weight=keyword_weight,
-            all_sources=all_sources,
+            semantic_weight=
+            semantic_weight,
+            keyword_weight=
+            keyword_weight,
+            all_sources=
+            all_sources,
         )
 
         tool_result = execute_registered_agent_tool(
@@ -1158,6 +1244,7 @@ def run_knowledge_base_agent(
                     question=question,
                     tool_calls=tool_calls,
                     sources=all_sources,
+                    repository_scoped=repository_scoped,
                 )
             )
 
@@ -1168,15 +1255,52 @@ def run_knowledge_base_agent(
                 break
 
     if not tool_calls:
-        trace.append("react_no_tool_called_use_search_knowledge_base_fallback")
+        trace.append(
+            "react_no_tool_called_use_"
+            "registered_search_fallback",
+        )
 
-        observation, sources = search_knowledge_base_tool(
-            session=session,
-            knowledge_base_id=knowledge_base_id,
-            query=question,
-            top_k=top_k,
-            semantic_weight=semantic_weight,
-            keyword_weight=keyword_weight,
+        fallback_context = (
+            AgentToolContext(
+                session=session,
+                knowledge_base_id=
+                knowledge_base_id,
+                repository_analysis_task_id=
+                repository_analysis_task_id,
+                question=question,
+                top_k=top_k,
+                semantic_weight=
+                semantic_weight,
+                keyword_weight=
+                keyword_weight,
+                all_sources=
+                all_sources,
+            )
+        )
+
+        fallback_result = (
+            execute_registered_agent_tool(
+                action=
+                "search_knowledge_base",
+                arguments={
+                    "query": question,
+                },
+                context=
+                fallback_context,
+            )
+        )
+
+        if (
+                fallback_result.tool_call
+                is not None
+        ):
+            tool_calls.append(
+                fallback_result
+                    .tool_call,
+            )
+
+        all_sources = (
+            fallback_result.sources
         )
 
         tool_calls.append(

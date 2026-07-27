@@ -35,6 +35,18 @@ export const AgentChatRequestSchema = {
             minimum: 0,
             title: 'Keyword Weight',
             default: 0.25
+        },
+        repository_analysis_task_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Repository Analysis Task Id'
         }
     },
     type: 'object',
@@ -114,6 +126,29 @@ export const AgentRunPublicSchema = {
             type: 'string',
             format: 'uuid',
             title: 'Owner Id'
+        },
+        repository_analysis_task_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Repository Analysis Task Id'
+        },
+        source_commit_sha: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Commit Sha'
         },
         question: {
             type: 'string',
@@ -3114,6 +3149,40 @@ export const DocumentPublicSchema = {
             format: 'uuid',
             title: 'Owner Id'
         },
+        repository_analysis_task_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Repository Analysis Task Id'
+        },
+        repository_relative_path: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Repository Relative Path'
+        },
+        source_commit_sha: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Commit Sha'
+        },
         filename: {
             type: 'string',
             title: 'Filename'
@@ -4987,6 +5056,18 @@ export const RagChatRequestSchema = {
             minimum: 0,
             title: 'Keyword Weight',
             default: 0.25
+        },
+        repository_analysis_task_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Repository Analysis Task Id'
         }
     },
     type: 'object',
@@ -5053,6 +5134,40 @@ export const RagChatSourceSchema = {
         original_filename: {
             type: 'string',
             title: 'Original Filename'
+        },
+        repository_analysis_task_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Repository Analysis Task Id'
+        },
+        repository_relative_path: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Repository Relative Path'
+        },
+        source_commit_sha: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Commit Sha'
         },
         chunk_id: {
             type: 'string',
@@ -6138,6 +6253,29 @@ export const RagRunPublicSchema = {
             format: 'uuid',
             title: 'Owner Id'
         },
+        repository_analysis_task_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Repository Analysis Task Id'
+        },
+        source_commit_sha: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Commit Sha'
+        },
         question: {
             type: 'string',
             title: 'Question'
@@ -6181,16 +6319,14 @@ export const RagRunPublicSchema = {
                 '$ref': '#/components/schemas/RagChatSource'
             },
             type: 'array',
-            title: 'Sources',
-            default: []
+            title: 'Sources'
         },
         trace: {
             items: {
                 type: 'string'
             },
             type: 'array',
-            title: 'Trace',
-            default: []
+            title: 'Trace'
         },
         error_message: {
             anyOf: [
@@ -6238,6 +6374,699 @@ export const RagRunsPublicSchema = {
     type: 'object',
     required: ['data', 'count'],
     title: 'RagRunsPublic'
+} as const;
+
+export const RepositoryAnalysisEmbeddingBatchPublicSchema = {
+    properties: {
+        task_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Task Id'
+        },
+        knowledge_base_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Knowledge Base Id'
+        },
+        embedding_model: {
+            type: 'string',
+            title: 'Embedding Model'
+        },
+        total_count: {
+            type: 'integer',
+            title: 'Total Count',
+            default: 0
+        },
+        pending_count: {
+            type: 'integer',
+            title: 'Pending Count',
+            default: 0
+        },
+        embedded_count: {
+            type: 'integer',
+            title: 'Embedded Count',
+            default: 0
+        },
+        failed_count: {
+            type: 'integer',
+            title: 'Failed Count',
+            default: 0
+        },
+        progress_percent: {
+            type: 'integer',
+            maximum: 100,
+            minimum: 0,
+            title: 'Progress Percent',
+            default: 0
+        },
+        index_status: {
+            type: 'string',
+            title: 'Index Status'
+        },
+        ready_for_search: {
+            type: 'boolean',
+            title: 'Ready For Search',
+            default: false
+        },
+        sample_error_message: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Sample Error Message'
+        },
+        processed_count: {
+            type: 'integer',
+            title: 'Processed Count',
+            default: 0
+        },
+        embedded_in_batch: {
+            type: 'integer',
+            title: 'Embedded In Batch',
+            default: 0
+        },
+        failed_in_batch: {
+            type: 'integer',
+            title: 'Failed In Batch',
+            default: 0
+        }
+    },
+    type: 'object',
+    required: ['task_id', 'knowledge_base_id', 'embedding_model', 'index_status'],
+    title: 'RepositoryAnalysisEmbeddingBatchPublic',
+    description: '一批 Embedding 处理结果。'
+} as const;
+
+export const RepositoryAnalysisEmbeddingBatchRequestSchema = {
+    properties: {
+        limit: {
+            type: 'integer',
+            maximum: 50,
+            minimum: 1,
+            title: 'Limit',
+            default: 10
+        },
+        retry_failed: {
+            type: 'boolean',
+            title: 'Retry Failed',
+            default: false
+        }
+    },
+    type: 'object',
+    title: 'RepositoryAnalysisEmbeddingBatchRequest',
+    description: '一次仓库代码 Embedding 批处理请求。'
+} as const;
+
+export const RepositoryAnalysisEmbeddingStatusPublicSchema = {
+    properties: {
+        task_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Task Id'
+        },
+        knowledge_base_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Knowledge Base Id'
+        },
+        embedding_model: {
+            type: 'string',
+            title: 'Embedding Model'
+        },
+        total_count: {
+            type: 'integer',
+            title: 'Total Count',
+            default: 0
+        },
+        pending_count: {
+            type: 'integer',
+            title: 'Pending Count',
+            default: 0
+        },
+        embedded_count: {
+            type: 'integer',
+            title: 'Embedded Count',
+            default: 0
+        },
+        failed_count: {
+            type: 'integer',
+            title: 'Failed Count',
+            default: 0
+        },
+        progress_percent: {
+            type: 'integer',
+            maximum: 100,
+            minimum: 0,
+            title: 'Progress Percent',
+            default: 0
+        },
+        index_status: {
+            type: 'string',
+            title: 'Index Status'
+        },
+        ready_for_search: {
+            type: 'boolean',
+            title: 'Ready For Search',
+            default: false
+        },
+        sample_error_message: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Sample Error Message'
+        }
+    },
+    type: 'object',
+    required: ['task_id', 'knowledge_base_id', 'embedding_model', 'index_status'],
+    title: 'RepositoryAnalysisEmbeddingStatusPublic',
+    description: '当前仓库导入代码块的 Embedding 状态。'
+} as const;
+
+export const RepositoryAnalysisKnowledgeBaseBindingPublicSchema = {
+    properties: {
+        task: {
+            '$ref': '#/components/schemas/RepositoryAnalysisTaskPublic'
+        },
+        knowledge_base: {
+            '$ref': '#/components/schemas/KnowledgeBasePublic'
+        },
+        created_new_knowledge_base: {
+            type: 'boolean',
+            title: 'Created New Knowledge Base',
+            default: false
+        }
+    },
+    type: 'object',
+    required: ['task', 'knowledge_base'],
+    title: 'RepositoryAnalysisKnowledgeBaseBindingPublic',
+    description: '仓库分析任务绑定知识库后的响应。'
+} as const;
+
+export const RepositoryAnalysisKnowledgeBaseRequestSchema = {
+    properties: {
+        knowledge_base_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Knowledge Base Id'
+        },
+        knowledge_base_name: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 255,
+                    minLength: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Knowledge Base Name'
+        },
+        knowledge_base_description: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 255
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Knowledge Base Description'
+        }
+    },
+    type: 'object',
+    title: 'RepositoryAnalysisKnowledgeBaseRequest',
+    description: `为仓库分析任务选择已有知识库，
+或者创建一个新的知识库。`
+} as const;
+
+export const RepositoryAnalysisKnowledgeImportPublicSchema = {
+    properties: {
+        task_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Task Id'
+        },
+        knowledge_base_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Knowledge Base Id'
+        },
+        repository_full_name: {
+            type: 'string',
+            title: 'Repository Full Name'
+        },
+        commit_sha: {
+            type: 'string',
+            title: 'Commit Sha'
+        },
+        document_count: {
+            type: 'integer',
+            title: 'Document Count',
+            default: 0
+        },
+        chunk_count: {
+            type: 'integer',
+            title: 'Chunk Count',
+            default: 0
+        },
+        imported_bytes: {
+            type: 'integer',
+            title: 'Imported Bytes',
+            default: 0
+        },
+        skipped_unsupported_file_count: {
+            type: 'integer',
+            title: 'Skipped Unsupported File Count',
+            default: 0
+        },
+        skipped_large_file_count: {
+            type: 'integer',
+            title: 'Skipped Large File Count',
+            default: 0
+        },
+        skipped_unreadable_file_count: {
+            type: 'integer',
+            title: 'Skipped Unreadable File Count',
+            default: 0
+        },
+        import_truncated: {
+            type: 'boolean',
+            title: 'Import Truncated',
+            default: false
+        },
+        already_imported: {
+            type: 'boolean',
+            title: 'Already Imported',
+            default: false
+        }
+    },
+    type: 'object',
+    required: ['task_id', 'knowledge_base_id', 'repository_full_name', 'commit_sha'],
+    title: 'RepositoryAnalysisKnowledgeImportPublic',
+    description: '固定 Commit 导入知识库后的结果。'
+} as const;
+
+export const RepositoryAnalysisTaskCreateSchema = {
+    properties: {
+        repository_url: {
+            type: 'string',
+            maxLength: 2048,
+            minLength: 1,
+            title: 'Repository Url'
+        },
+        report_language: {
+            type: 'string',
+            maxLength: 20,
+            title: 'Report Language',
+            default: 'zh-CN'
+        }
+    },
+    type: 'object',
+    required: ['repository_url'],
+    title: 'RepositoryAnalysisTaskCreate',
+    description: '创建快速仓库概览任务的请求参数。'
+} as const;
+
+export const RepositoryAnalysisTaskPublicSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        repository_full_name: {
+            type: 'string',
+            title: 'Repository Full Name'
+        },
+        canonical_url: {
+            type: 'string',
+            title: 'Canonical Url'
+        },
+        analysis_mode: {
+            type: 'string',
+            title: 'Analysis Mode'
+        },
+        status: {
+            type: 'string',
+            title: 'Status'
+        },
+        stage: {
+            type: 'string',
+            title: 'Stage'
+        },
+        progress_percent: {
+            type: 'integer',
+            title: 'Progress Percent'
+        },
+        is_saved: {
+            type: 'boolean',
+            title: 'Is Saved'
+        },
+        knowledge_base_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Knowledge Base Id'
+        },
+        error_code: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Error Code'
+        },
+        error_message: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Error Message'
+        },
+        expires_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Expires At'
+        },
+        created_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Created At'
+        },
+        started_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Started At'
+        },
+        completed_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Completed At'
+        },
+        source_url: {
+            type: 'string',
+            title: 'Source Url'
+        },
+        repository_owner: {
+            type: 'string',
+            title: 'Repository Owner'
+        },
+        repository_name: {
+            type: 'string',
+            title: 'Repository Name'
+        },
+        requested_ref: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Requested Ref'
+        },
+        default_branch: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Default Branch'
+        },
+        resolved_commit_sha: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Resolved Commit Sha'
+        },
+        report_language: {
+            type: 'string',
+            title: 'Report Language'
+        },
+        result_json: {
+            anyOf: [
+                {
+                    additionalProperties: true,
+                    type: 'object'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Result Json'
+        },
+        evidence_json: {
+            anyOf: [
+                {
+                    additionalProperties: true,
+                    type: 'object'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Evidence Json'
+        },
+        report_markdown: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Report Markdown'
+        },
+        updated_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Updated At'
+        }
+    },
+    type: 'object',
+    required: ['id', 'repository_full_name', 'canonical_url', 'analysis_mode', 'status', 'stage', 'progress_percent', 'is_saved', 'source_url', 'repository_owner', 'repository_name', 'report_language'],
+    title: 'RepositoryAnalysisTaskPublic',
+    description: '查询单个任务时返回的完整结果。'
+} as const;
+
+export const RepositoryAnalysisTaskSummaryPublicSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        repository_full_name: {
+            type: 'string',
+            title: 'Repository Full Name'
+        },
+        canonical_url: {
+            type: 'string',
+            title: 'Canonical Url'
+        },
+        analysis_mode: {
+            type: 'string',
+            title: 'Analysis Mode'
+        },
+        status: {
+            type: 'string',
+            title: 'Status'
+        },
+        stage: {
+            type: 'string',
+            title: 'Stage'
+        },
+        progress_percent: {
+            type: 'integer',
+            title: 'Progress Percent'
+        },
+        is_saved: {
+            type: 'boolean',
+            title: 'Is Saved'
+        },
+        knowledge_base_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Knowledge Base Id'
+        },
+        error_code: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Error Code'
+        },
+        error_message: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Error Message'
+        },
+        expires_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Expires At'
+        },
+        created_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Created At'
+        },
+        started_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Started At'
+        },
+        completed_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Completed At'
+        }
+    },
+    type: 'object',
+    required: ['id', 'repository_full_name', 'canonical_url', 'analysis_mode', 'status', 'stage', 'progress_percent', 'is_saved'],
+    title: 'RepositoryAnalysisTaskSummaryPublic',
+    description: '任务列表使用的轻量响应。'
+} as const;
+
+export const RepositoryAnalysisTasksPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/RepositoryAnalysisTaskSummaryPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'RepositoryAnalysisTasksPublic',
+    description: '仓库分析任务分页列表。'
 } as const;
 
 export const TokenSchema = {

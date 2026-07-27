@@ -1,4 +1,4 @@
-import { BookOpen, Briefcase, Home, Users } from "lucide-react"
+import { BookOpen, Briefcase, Home, ScanSearch, Users } from "lucide-react"
 
 import { SidebarAppearance } from "@/components/Common/Appearance"
 import { Logo } from "@/components/Common/Logo"
@@ -15,7 +15,16 @@ import { User } from "./User"
 const baseItems: Item[] = [
   { icon: Home, title: "Dashboard", path: "/" },
   { icon: Briefcase, title: "Items", path: "/items" },
-  { icon: BookOpen, title: "知识库", path: "/knowledge-bases" },
+  {
+    icon: ScanSearch,
+    title: "仓库分析",
+    path: "/repository-analysis",
+  },
+  {
+    icon: BookOpen,
+    title: "知识库",
+    path: "/knowledge-bases",
+  },
 ]
 export function AppSidebar() {
   const { user: currentUser } = useAuth()

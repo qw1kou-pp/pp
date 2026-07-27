@@ -16,12 +16,10 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
+import { Route as LayoutRepositoryAnalysisRouteImport } from './routes/_layout/repository-analysis'
 import { Route as LayoutKnowledgeBasesRouteImport } from './routes/_layout/knowledge-bases'
 import { Route as LayoutItemsRouteImport } from './routes/_layout/items'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
-import { Route as Layout3RouteImport } from './routes/_layout/3'
-import { Route as Layout2RouteImport } from './routes/_layout/2'
-import { Route as Layout1RouteImport } from './routes/_layout/1'
 import { Route as LayoutKnowledgeBasesIndexRouteImport } from './routes/_layout/knowledge-bases.index'
 import { Route as LayoutKnowledgeBasesKnowledgeBaseIdRouteImport } from './routes/_layout/knowledge-bases.$knowledgeBaseId'
 
@@ -59,6 +57,12 @@ const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutRepositoryAnalysisRoute =
+  LayoutRepositoryAnalysisRouteImport.update({
+    id: '/repository-analysis',
+    path: '/repository-analysis',
+    getParentRoute: () => LayoutRoute,
+  } as any)
 const LayoutKnowledgeBasesRoute = LayoutKnowledgeBasesRouteImport.update({
   id: '/knowledge-bases',
   path: '/knowledge-bases',
@@ -72,21 +76,6 @@ const LayoutItemsRoute = LayoutItemsRouteImport.update({
 const LayoutAdminRoute = LayoutAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
-  getParentRoute: () => LayoutRoute,
-} as any)
-const Layout3Route = Layout3RouteImport.update({
-  id: '/3',
-  path: '/3',
-  getParentRoute: () => LayoutRoute,
-} as any)
-const Layout2Route = Layout2RouteImport.update({
-  id: '/2',
-  path: '/2',
-  getParentRoute: () => LayoutRoute,
-} as any)
-const Layout1Route = Layout1RouteImport.update({
-  id: '/1',
-  path: '/1',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutKnowledgeBasesIndexRoute =
@@ -108,12 +97,10 @@ export interface FileRoutesByFullPath {
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
-  '/1': typeof Layout1Route
-  '/2': typeof Layout2Route
-  '/3': typeof Layout3Route
   '/admin': typeof LayoutAdminRoute
   '/items': typeof LayoutItemsRoute
   '/knowledge-bases': typeof LayoutKnowledgeBasesRouteWithChildren
+  '/repository-analysis': typeof LayoutRepositoryAnalysisRoute
   '/settings': typeof LayoutSettingsRoute
   '/knowledge-bases/$knowledgeBaseId': typeof LayoutKnowledgeBasesKnowledgeBaseIdRoute
   '/knowledge-bases/': typeof LayoutKnowledgeBasesIndexRoute
@@ -123,11 +110,9 @@ export interface FileRoutesByTo {
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
-  '/1': typeof Layout1Route
-  '/2': typeof Layout2Route
-  '/3': typeof Layout3Route
   '/admin': typeof LayoutAdminRoute
   '/items': typeof LayoutItemsRoute
+  '/repository-analysis': typeof LayoutRepositoryAnalysisRoute
   '/settings': typeof LayoutSettingsRoute
   '/': typeof LayoutIndexRoute
   '/knowledge-bases/$knowledgeBaseId': typeof LayoutKnowledgeBasesKnowledgeBaseIdRoute
@@ -140,12 +125,10 @@ export interface FileRoutesById {
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
-  '/_layout/1': typeof Layout1Route
-  '/_layout/2': typeof Layout2Route
-  '/_layout/3': typeof Layout3Route
   '/_layout/admin': typeof LayoutAdminRoute
   '/_layout/items': typeof LayoutItemsRoute
   '/_layout/knowledge-bases': typeof LayoutKnowledgeBasesRouteWithChildren
+  '/_layout/repository-analysis': typeof LayoutRepositoryAnalysisRoute
   '/_layout/settings': typeof LayoutSettingsRoute
   '/_layout/': typeof LayoutIndexRoute
   '/_layout/knowledge-bases/$knowledgeBaseId': typeof LayoutKnowledgeBasesKnowledgeBaseIdRoute
@@ -159,12 +142,10 @@ export interface FileRouteTypes {
     | '/recover-password'
     | '/reset-password'
     | '/signup'
-    | '/1'
-    | '/2'
-    | '/3'
     | '/admin'
     | '/items'
     | '/knowledge-bases'
+    | '/repository-analysis'
     | '/settings'
     | '/knowledge-bases/$knowledgeBaseId'
     | '/knowledge-bases/'
@@ -174,11 +155,9 @@ export interface FileRouteTypes {
     | '/recover-password'
     | '/reset-password'
     | '/signup'
-    | '/1'
-    | '/2'
-    | '/3'
     | '/admin'
     | '/items'
+    | '/repository-analysis'
     | '/settings'
     | '/'
     | '/knowledge-bases/$knowledgeBaseId'
@@ -190,12 +169,10 @@ export interface FileRouteTypes {
     | '/recover-password'
     | '/reset-password'
     | '/signup'
-    | '/_layout/1'
-    | '/_layout/2'
-    | '/_layout/3'
     | '/_layout/admin'
     | '/_layout/items'
     | '/_layout/knowledge-bases'
+    | '/_layout/repository-analysis'
     | '/_layout/settings'
     | '/_layout/'
     | '/_layout/knowledge-bases/$knowledgeBaseId'
@@ -261,6 +238,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutSettingsRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/repository-analysis': {
+      id: '/_layout/repository-analysis'
+      path: '/repository-analysis'
+      fullPath: '/repository-analysis'
+      preLoaderRoute: typeof LayoutRepositoryAnalysisRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/knowledge-bases': {
       id: '/_layout/knowledge-bases'
       path: '/knowledge-bases'
@@ -280,27 +264,6 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof LayoutAdminRouteImport
-      parentRoute: typeof LayoutRoute
-    }
-    '/_layout/3': {
-      id: '/_layout/3'
-      path: '/3'
-      fullPath: '/3'
-      preLoaderRoute: typeof Layout3RouteImport
-      parentRoute: typeof LayoutRoute
-    }
-    '/_layout/2': {
-      id: '/_layout/2'
-      path: '/2'
-      fullPath: '/2'
-      preLoaderRoute: typeof Layout2RouteImport
-      parentRoute: typeof LayoutRoute
-    }
-    '/_layout/1': {
-      id: '/_layout/1'
-      path: '/1'
-      fullPath: '/1'
-      preLoaderRoute: typeof Layout1RouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/knowledge-bases/': {
@@ -335,23 +298,19 @@ const LayoutKnowledgeBasesRouteWithChildren =
   LayoutKnowledgeBasesRoute._addFileChildren(LayoutKnowledgeBasesRouteChildren)
 
 interface LayoutRouteChildren {
-  Layout1Route: typeof Layout1Route
-  Layout2Route: typeof Layout2Route
-  Layout3Route: typeof Layout3Route
   LayoutAdminRoute: typeof LayoutAdminRoute
   LayoutItemsRoute: typeof LayoutItemsRoute
   LayoutKnowledgeBasesRoute: typeof LayoutKnowledgeBasesRouteWithChildren
+  LayoutRepositoryAnalysisRoute: typeof LayoutRepositoryAnalysisRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
-  Layout1Route: Layout1Route,
-  Layout2Route: Layout2Route,
-  Layout3Route: Layout3Route,
   LayoutAdminRoute: LayoutAdminRoute,
   LayoutItemsRoute: LayoutItemsRoute,
   LayoutKnowledgeBasesRoute: LayoutKnowledgeBasesRouteWithChildren,
+  LayoutRepositoryAnalysisRoute: LayoutRepositoryAnalysisRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutIndexRoute: LayoutIndexRoute,
 }

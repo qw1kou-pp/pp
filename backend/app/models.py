@@ -213,7 +213,24 @@ class Document(DocumentBase, table=True):
         nullable=False,
         ondelete="CASCADE",
     )
+    repository_analysis_task_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="repository_analysis_task.id",
+        nullable=True,
+        ondelete="SET NULL",
+        index=True,
+    )
 
+    repository_relative_path: str | None = Field(
+        default=None,
+        max_length=2048,
+    )
+
+    source_commit_sha: str | None = Field(
+        default=None,
+        max_length=64,
+        index=True,
+    )
     filename: str = Field(max_length=255)
     storage_path: str = Field(max_length=1024)
 
@@ -230,6 +247,11 @@ class DocumentPublic(DocumentBase):
     id: uuid.UUID
     knowledge_base_id: uuid.UUID
     owner_id: uuid.UUID
+
+    repository_analysis_task_id: uuid.UUID | None = None
+    repository_relative_path: str | None = None
+    source_commit_sha: str | None = None
+
     filename: str
     storage_path: str
     created_at: datetime | None = None
@@ -329,11 +351,25 @@ class RagChatRequest(SQLModel):
     top_k: int = Field(default=5, ge=1, le=20)
     semantic_weight: float = Field(default=0.75, ge=0, le=1)
     keyword_weight: float = Field(default=0.25, ge=0, le=1)
+    repository_analysis_task_id: (
+        uuid.UUID | None
+    ) = None
 
 
 class RagChatSource(SQLModel):
     document_id: uuid.UUID
     original_filename: str
+    repository_analysis_task_id: (
+        uuid.UUID | None
+    ) = None
+
+    repository_relative_path: (
+        str | None
+    ) = None
+
+    source_commit_sha: (
+        str | None
+    ) = None
     chunk_id: uuid.UUID
     chunk_index: int
     content: str
@@ -359,11 +395,35 @@ class AgentToolCallPublic(SQLModel):
 
 
 class AgentChatRequest(SQLModel):
-    question: str = Field(min_length=1, max_length=1000)
-    top_k: int = Field(default=5, ge=1, le=20)
-    max_steps: int = Field(default=3, ge=1, le=10)
-    semantic_weight: float = Field(default=0.75, ge=0, le=1)
-    keyword_weight: float = Field(default=0.25, ge=0, le=1)
+  question: str = Field(
+    min_length=1,
+    max_length=1000,
+  )
+
+  top_k: int = Field(
+    default=5,
+    ge=1,
+    le=20,
+  )
+
+  max_steps: int = Field(
+    default=3,
+    ge=1,
+    le=10,
+  )
+
+  semantic_weight: float = Field(
+    default=0.75,
+    ge=0,
+    le=1,
+  )
+
+  keyword_weight: float = Field(
+    default=0.25,
+    ge=0,
+    le=1,
+  )
+  repository_analysis_task_id: uuid.UUID | None = None
 
 
 class AgentChatResponse(SQLModel):
@@ -389,6 +449,21 @@ class AgentRun(SQLModel, table=True):
         foreign_key="user.id",
         nullable=False,
         ondelete="CASCADE",
+    )
+
+    repository_analysis_task_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key=(
+            "repository_analysis_task.id"
+        ),
+        nullable=True,
+        ondelete="SET NULL",
+        index=True,
+    )
+
+    source_commit_sha: str | None = Field(
+        default=None,
+        max_length=64,
     )
 
     question: str = Field(sa_column=Column(Text, nullable=False))
@@ -427,6 +502,10 @@ class AgentRunPublic(SQLModel):
     knowledge_base_id: uuid.UUID
     owner_id: uuid.UUID
 
+    repository_analysis_task_id: uuid.UUID | None = None
+
+    source_commit_sha: str | None = None
+
     question: str
     answer: str
 
@@ -437,9 +516,21 @@ class AgentRunPublic(SQLModel):
 
     latency_ms: int | None = None
 
-    tool_calls: list[AgentToolCallPublic] = Field(default_factory=list)
-    sources: list[RagChatSource] = Field(default_factory=list)
-    trace: list[str] = Field(default_factory=list)
+    tool_calls: list[
+        AgentToolCallPublic
+    ] = Field(
+        default_factory=list,
+    )
+
+    sources: list[
+        RagChatSource
+    ] = Field(
+        default_factory=list,
+    )
+
+    trace: list[str] = Field(
+        default_factory=list,
+    )
 
     error_message: str | None = None
     created_at: datetime | None = None
@@ -1116,6 +1207,21 @@ class RagRun(RagRunBase, table=True):
         ondelete="CASCADE",
     )
 
+    repository_analysis_task_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key=(
+            "repository_analysis_task.id"
+        ),
+        nullable=True,
+        ondelete="SET NULL",
+        index=True,
+    )
+
+    source_commit_sha: str | None = Field(
+        default=None,
+        max_length=64,
+    )
+
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),
@@ -1126,15 +1232,31 @@ class RagRunPublic(SQLModel):
     id: uuid.UUID
     knowledge_base_id: uuid.UUID
     owner_id: uuid.UUID
+
+    repository_analysis_task_id: uuid.UUID | None = None
+
+    source_commit_sha: str | None = None
+
     question: str
     answer: str
+
     retrieval_type: str
     top_k: int = 5
     semantic_weight: float = 0.75
     keyword_weight: float = 0.25
+
     latency_ms: int | None = None
-    sources: list[RagChatSource] = []
-    trace: list[str] = []
+
+    sources: list[
+        RagChatSource
+    ] = Field(
+        default_factory=list,
+    )
+
+    trace: list[str] = Field(
+        default_factory=list,
+    )
+
     error_message: str | None = None
     created_at: datetime | None = None
 
@@ -2142,6 +2264,36 @@ class RepositoryAnalysisTask(SQLModel, table=True):
         sa_type=DateTime(timezone=True),
     )
 
+    heartbeat_at: datetime | None = Field(
+        default=None,
+        index=True,
+    )
+
+    lease_expires_at: datetime | None = Field(
+        default=None,
+        index=True,
+    )
+
+    attempt_count: int = Field(
+        default=0,
+        ge=0,
+    )
+
+    max_attempts: int = Field(
+        default=3,
+        ge=1,
+    )
+
+    next_attempt_at: datetime | None = Field(
+        default=None,
+        index=True,
+    )
+
+    last_recovery_reason: str | None = Field(
+        default=None,
+        max_length=100,
+    )
+
 
 class RepositoryAnalysisTaskCreate(SQLModel):
     """创建快速仓库概览任务的请求参数。"""
@@ -2154,6 +2306,26 @@ class RepositoryAnalysisTaskCreate(SQLModel):
     report_language: str = Field(
         default="zh-CN",
         max_length=20,
+    )
+
+
+class RepositoryAnalysisKnowledgeBaseRequest(SQLModel):
+    """
+    为仓库分析任务选择已有知识库，
+    或者创建一个新的知识库。
+    """
+
+    knowledge_base_id: uuid.UUID | None = None
+
+    knowledge_base_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+    )
+
+    knowledge_base_description: str | None = Field(
+        default=None,
+        max_length=255,
     )
 
 
@@ -2201,6 +2373,103 @@ class RepositoryAnalysisTaskPublic(
     report_markdown: str | None = None
 
     updated_at: datetime | None = None
+
+
+class RepositoryAnalysisKnowledgeBaseBindingPublic(
+    SQLModel,
+):
+    """
+    仓库分析任务绑定知识库后的响应。
+    """
+
+    task: RepositoryAnalysisTaskPublic
+    knowledge_base: KnowledgeBasePublic
+
+    created_new_knowledge_base: bool = False
+
+
+class RepositoryAnalysisKnowledgeImportPublic(
+    SQLModel,
+):
+    """
+    固定 Commit 导入知识库后的结果。
+    """
+
+    task_id: uuid.UUID
+    knowledge_base_id: uuid.UUID
+
+    repository_full_name: str
+    commit_sha: str
+
+    document_count: int = 0
+    chunk_count: int = 0
+    imported_bytes: int = 0
+
+    skipped_unsupported_file_count: int = 0
+    skipped_large_file_count: int = 0
+    skipped_unreadable_file_count: int = 0
+
+    import_truncated: bool = False
+    already_imported: bool = False
+
+
+class RepositoryAnalysisEmbeddingBatchRequest(
+    SQLModel,
+):
+    """
+    一次仓库代码 Embedding 批处理请求。
+    """
+
+    limit: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+    )
+
+    retry_failed: bool = Field(
+        default=False,
+    )
+
+
+class RepositoryAnalysisEmbeddingStatusPublic(
+    SQLModel,
+):
+    """
+    当前仓库导入代码块的 Embedding 状态。
+    """
+
+    task_id: uuid.UUID
+    knowledge_base_id: uuid.UUID
+
+    embedding_model: str
+
+    total_count: int = 0
+    pending_count: int = 0
+    embedded_count: int = 0
+    failed_count: int = 0
+
+    progress_percent: int = Field(
+        default=0,
+        ge=0,
+        le=100,
+    )
+
+    index_status: str
+    ready_for_search: bool = False
+
+    sample_error_message: str | None = None
+
+
+class RepositoryAnalysisEmbeddingBatchPublic(
+    RepositoryAnalysisEmbeddingStatusPublic,
+):
+    """
+    一批 Embedding 处理结果。
+    """
+
+    processed_count: int = 0
+    embedded_in_batch: int = 0
+    failed_in_batch: int = 0
 
 
 class RepositoryAnalysisTasksPublic(SQLModel):

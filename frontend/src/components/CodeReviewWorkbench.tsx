@@ -49,10 +49,16 @@ import {
 import {
   GitHubReviewPublishPanel,
 } from "./GitHubReviewPublishPanel"
-
+import type {
+  CodeReviewRepositoryPrefill,
+} from "./repositoryReviewHandoff"
 
 type CodeReviewWorkbenchProps = {
   knowledgeBaseId: string
+
+  repositoryPrefill?:
+    CodeReviewRepositoryPrefill
+    | null
 }
 
 type ReviewLanguage = "zh-CN" | "en-US"
@@ -728,6 +734,7 @@ const getPriorityClassName = (priority?: string | null) => {
 
 export function CodeReviewWorkbench({
   knowledgeBaseId,
+  repositoryPrefill = null,
 }: CodeReviewWorkbenchProps) {
   const queryClient =
     useQueryClient()
@@ -1209,6 +1216,9 @@ export function CodeReviewWorkbench({
         <CodeReviewSourceImportPanel
           knowledgeBaseId={
             knowledgeBaseId
+          }
+          repositoryPrefill={
+            repositoryPrefill
           }
           resolvedSource={
             resolvedReviewSource

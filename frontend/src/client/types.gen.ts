@@ -6,6 +6,7 @@ export type AgentChatRequest = {
     max_steps?: number;
     semantic_weight?: number;
     keyword_weight?: number;
+    repository_analysis_task_id?: (string | null);
 };
 
 export type AgentChatResponse = {
@@ -21,6 +22,8 @@ export type AgentRunPublic = {
     id: string;
     knowledge_base_id: string;
     owner_id: string;
+    repository_analysis_task_id?: (string | null);
+    source_commit_sha?: (string | null);
     question: string;
     answer: string;
     top_k: number;
@@ -636,6 +639,9 @@ export type DocumentPublic = {
     id: string;
     knowledge_base_id: string;
     owner_id: string;
+    repository_analysis_task_id?: (string | null);
+    repository_relative_path?: (string | null);
+    source_commit_sha?: (string | null);
     filename: string;
     storage_path: string;
     created_at?: (string | null);
@@ -996,6 +1002,7 @@ export type RagChatRequest = {
     top_k?: number;
     semantic_weight?: number;
     keyword_weight?: number;
+    repository_analysis_task_id?: (string | null);
 };
 
 export type RagChatResponse = {
@@ -1009,6 +1016,9 @@ export type RagChatResponse = {
 export type RagChatSource = {
     document_id: string;
     original_filename: string;
+    repository_analysis_task_id?: (string | null);
+    repository_relative_path?: (string | null);
+    source_commit_sha?: (string | null);
     chunk_id: string;
     chunk_index: number;
     content: string;
@@ -1195,6 +1205,8 @@ export type RagRunPublic = {
     id: string;
     knowledge_base_id: string;
     owner_id: string;
+    repository_analysis_task_id?: (string | null);
+    source_commit_sha?: (string | null);
     question: string;
     answer: string;
     retrieval_type: string;
@@ -1211,6 +1223,161 @@ export type RagRunPublic = {
 export type RagRunsPublic = {
     data: Array<RagRunPublic>;
     count: number;
+};
+
+/**
+ * 一批 Embedding 处理结果。
+ */
+export type RepositoryAnalysisEmbeddingBatchPublic = {
+    task_id: string;
+    knowledge_base_id: string;
+    embedding_model: string;
+    total_count?: number;
+    pending_count?: number;
+    embedded_count?: number;
+    failed_count?: number;
+    progress_percent?: number;
+    index_status: string;
+    ready_for_search?: boolean;
+    sample_error_message?: (string | null);
+    processed_count?: number;
+    embedded_in_batch?: number;
+    failed_in_batch?: number;
+};
+
+/**
+ * 一次仓库代码 Embedding 批处理请求。
+ */
+export type RepositoryAnalysisEmbeddingBatchRequest = {
+    limit?: number;
+    retry_failed?: boolean;
+};
+
+/**
+ * 当前仓库导入代码块的 Embedding 状态。
+ */
+export type RepositoryAnalysisEmbeddingStatusPublic = {
+    task_id: string;
+    knowledge_base_id: string;
+    embedding_model: string;
+    total_count?: number;
+    pending_count?: number;
+    embedded_count?: number;
+    failed_count?: number;
+    progress_percent?: number;
+    index_status: string;
+    ready_for_search?: boolean;
+    sample_error_message?: (string | null);
+};
+
+/**
+ * 仓库分析任务绑定知识库后的响应。
+ */
+export type RepositoryAnalysisKnowledgeBaseBindingPublic = {
+    task: RepositoryAnalysisTaskPublic;
+    knowledge_base: KnowledgeBasePublic;
+    created_new_knowledge_base?: boolean;
+};
+
+/**
+ * 为仓库分析任务选择已有知识库，
+ * 或者创建一个新的知识库。
+ */
+export type RepositoryAnalysisKnowledgeBaseRequest = {
+    knowledge_base_id?: (string | null);
+    knowledge_base_name?: (string | null);
+    knowledge_base_description?: (string | null);
+};
+
+/**
+ * 固定 Commit 导入知识库后的结果。
+ */
+export type RepositoryAnalysisKnowledgeImportPublic = {
+    task_id: string;
+    knowledge_base_id: string;
+    repository_full_name: string;
+    commit_sha: string;
+    document_count?: number;
+    chunk_count?: number;
+    imported_bytes?: number;
+    skipped_unsupported_file_count?: number;
+    skipped_large_file_count?: number;
+    skipped_unreadable_file_count?: number;
+    import_truncated?: boolean;
+    already_imported?: boolean;
+};
+
+/**
+ * 创建快速仓库概览任务的请求参数。
+ */
+export type RepositoryAnalysisTaskCreate = {
+    repository_url: string;
+    report_language?: string;
+};
+
+/**
+ * 查询单个任务时返回的完整结果。
+ */
+export type RepositoryAnalysisTaskPublic = {
+    id: string;
+    repository_full_name: string;
+    canonical_url: string;
+    analysis_mode: string;
+    status: string;
+    stage: string;
+    progress_percent: number;
+    is_saved: boolean;
+    knowledge_base_id?: (string | null);
+    error_code?: (string | null);
+    error_message?: (string | null);
+    expires_at?: (string | null);
+    created_at?: (string | null);
+    started_at?: (string | null);
+    completed_at?: (string | null);
+    source_url: string;
+    repository_owner: string;
+    repository_name: string;
+    requested_ref?: (string | null);
+    default_branch?: (string | null);
+    resolved_commit_sha?: (string | null);
+    report_language: string;
+    result_json?: ({
+    [key: string]: unknown;
+} | null);
+    evidence_json?: ({
+    [key: string]: unknown;
+} | null);
+    report_markdown?: (string | null);
+    updated_at?: (string | null);
+};
+
+/**
+ * 仓库分析任务分页列表。
+ */
+export type RepositoryAnalysisTasksPublic = {
+    data: Array<RepositoryAnalysisTaskSummaryPublic>;
+    count: number;
+};
+
+/**
+ * 任务列表使用的轻量响应。
+ */
+export type RepositoryAnalysisTaskSummaryPublic = {
+    id: string;
+    repository_full_name: string;
+    canonical_url: string;
+    analysis_mode: string;
+    status: string;
+    stage: string;
+    progress_percent: number;
+    is_saved: boolean;
+    knowledge_base_id?: (string | null);
+    error_code?: (string | null);
+    error_message?: (string | null);
+    expires_at?: (string | null);
+    created_at?: (string | null);
+    started_at?: (string | null);
+    completed_at?: (string | null);
 };
 
 export type Token = {
@@ -1449,6 +1616,7 @@ export type ReadAgentRunsData = {
     keyword?: (string | null);
     knowledgeBaseId: string;
     limit?: number;
+    repositoryAnalysisTaskId?: (string | null);
     skip?: number;
 };
 
@@ -1477,6 +1645,7 @@ export type ReadKnowledgeBaseRagRunsData = {
     keyword?: (string | null);
     knowledgeBaseId: string;
     limit?: number;
+    repositoryAnalysisTaskId?: (string | null);
     skip?: number;
 };
 
@@ -1786,6 +1955,58 @@ export type PrivateCreateUserData = {
 };
 
 export type PrivateCreateUserResponse = (UserPublic);
+
+export type RepositoryAnalysesCreateRepositoryAnalysisData = {
+    requestBody: RepositoryAnalysisTaskCreate;
+};
+
+export type RepositoryAnalysesCreateRepositoryAnalysisResponse = (RepositoryAnalysisTaskPublic);
+
+export type RepositoryAnalysesReadRepositoryAnalysesData = {
+    limit?: number;
+    skip?: number;
+    status?: (string | null);
+};
+
+export type RepositoryAnalysesReadRepositoryAnalysesResponse = (RepositoryAnalysisTasksPublic);
+
+export type RepositoryAnalysesReadRepositoryAnalysisData = {
+    taskId: string;
+};
+
+export type RepositoryAnalysesReadRepositoryAnalysisResponse = (RepositoryAnalysisTaskPublic);
+
+export type RepositoryAnalysesSaveRepositoryAnalysisData = {
+    taskId: string;
+};
+
+export type RepositoryAnalysesSaveRepositoryAnalysisResponse = (RepositoryAnalysisTaskPublic);
+
+export type BindRepositoryAnalysisKnowledgeBaseData = {
+    requestBody: RepositoryAnalysisKnowledgeBaseRequest;
+    taskId: string;
+};
+
+export type BindRepositoryAnalysisKnowledgeBaseResponse = (RepositoryAnalysisKnowledgeBaseBindingPublic);
+
+export type ImportRepositoryAnalysisKnowledgeBaseData = {
+    taskId: string;
+};
+
+export type ImportRepositoryAnalysisKnowledgeBaseResponse = (RepositoryAnalysisKnowledgeImportPublic);
+
+export type ReadRepositoryAnalysisEmbeddingStatusData = {
+    taskId: string;
+};
+
+export type ReadRepositoryAnalysisEmbeddingStatusResponse = (RepositoryAnalysisEmbeddingStatusPublic);
+
+export type BackfillRepositoryAnalysisEmbeddingsData = {
+    requestBody: RepositoryAnalysisEmbeddingBatchRequest;
+    taskId: string;
+};
+
+export type BackfillRepositoryAnalysisEmbeddingsResponse = (RepositoryAnalysisEmbeddingBatchPublic);
 
 export type UsersReadUsersData = {
     limit?: number;

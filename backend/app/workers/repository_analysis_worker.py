@@ -12,8 +12,7 @@ from sqlmodel import Session
 from app.core.db import engine
 from app.models import RepositoryAnalysisTask
 from app.services.repository_analysis_processor import (
-    build_placeholder_repository_analysis,
-    build_repository_snapshot_analysis,
+    build_repository_overview_analysis,
 )
 from app.services.repository_analysis_task import (
     claim_next_repository_analysis_task,
@@ -21,6 +20,14 @@ from app.services.repository_analysis_task import (
     fail_repository_analysis_task,
     update_repository_analysis_progress,
     update_repository_resolution_metadata,
+    update_repository_snapshot_metadata,
+)
+from app.services.repository_analysis_heartbeat import (
+    RepositoryAnalysisHeartbeat,
+    RepositoryAnalysisHeartbeatError,
+)
+from app.services.repository_analysis_lease import (
+    RepositoryAnalysisLeaseLostError,
 )
 from app.services.github_repository_client import (
     GitHubPrivateRepositoryNotSupportedError,
@@ -31,9 +38,6 @@ from app.services.github_repository_client import (
     GitHubRepositoryUnavailableError,
     GitHubRepositoryAcquisition,
 )
-from app.services.repository_analysis_processor import (
-    build_repository_overview_analysis,
-)
 
 from app.services.github_repository_snapshot import (
     GitHubRepositorySnapshotDownloadError,
@@ -42,10 +46,6 @@ from app.services.github_repository_snapshot import (
     GitHubRepositorySnapshotNotFoundError,
     GitHubRepositorySnapshotTooLargeError,
     GitHubRepositorySnapshotUnsafeArchiveError,
-)
-
-from app.services.repository_analysis_task import (
-    update_repository_snapshot_metadata,
 )
 
 from app.services.repository_structure_scanner import (
@@ -75,6 +75,9 @@ from app.services.repository_snapshot_lifecycle import (
 logger = logging.getLogger(__name__)
 
 _shutdown_event = Event()
+
+DEFAULT_REPOSITORY_ANALYSIS_HEARTBEAT_INTERVAL_SECONDS = 30.0
+DEFAULT_REPOSITORY_ANALYSIS_LEASE_SECONDS = 90
 
 
 class RepositoryAnalysisWorkerError(RuntimeError):
@@ -116,6 +119,9 @@ def run_repository_analysis_worker_once(
     返回值：
     True  → 本次领取到一条任务
     False → 当前没有待处理任务
+
+    领取成功后启动独立心跳线程。租约丢失或心跳故障
+    不会被记录成普通业务失败。
     """
 
     with Session(engine) as session:
@@ -136,18 +142,64 @@ def run_repository_analysis_worker_once(
         task.repository_full_name,
     )
 
+    heartbeat = RepositoryAnalysisHeartbeat(
+        task_id=task.id,
+        worker_id=worker_id,
+        interval_seconds=(
+            _get_heartbeat_interval_seconds()
+        ),
+        lease_seconds=_get_lease_seconds(),
+    )
+
     try:
-        process_repository_analysis_task(
-            task=task,
-            worker_id=worker_id,
+        with heartbeat:
+            process_repository_analysis_task(
+                task=task,
+                worker_id=worker_id,
+                heartbeat=heartbeat,
+            )
+
+    except RepositoryAnalysisLeaseLostError:
+        logger.warning(
+            "Stopped repository analysis task %s "
+            "because its lease was lost",
+            task.id,
+            exc_info=True,
         )
+        return True
+
+    except RepositoryAnalysisHeartbeatError:
+        logger.exception(
+            "Stopped repository analysis task %s "
+            "because its heartbeat failed",
+            task.id,
+        )
+        raise
+
     except Exception as exc:
+        try:
+            heartbeat.raise_if_failed()
+        except RepositoryAnalysisLeaseLostError:
+            logger.warning(
+                "Did not persist business failure for task %s "
+                "because its lease was lost",
+                task.id,
+                exc_info=True,
+            )
+            return True
+        except RepositoryAnalysisHeartbeatError:
+            logger.exception(
+                "Did not persist business failure for task %s "
+                "because its heartbeat failed",
+                task.id,
+            )
+            raise
+
         _persist_task_failure(
             task=task,
             worker_id=worker_id,
             exception=exc,
         )
-
         raise
 
     logger.info(
@@ -162,6 +214,7 @@ def process_repository_analysis_task(
     *,
     task: RepositoryAnalysisTask,
     worker_id: str,
+    heartbeat: RepositoryAnalysisHeartbeat,
 ) -> None:
     """
     执行一条仓库分析任务。
@@ -176,6 +229,8 @@ def process_repository_analysis_task(
     """
 
     # 第一阶段：获取 GitHub 仓库元数据
+    heartbeat.raise_if_failed()
+
     _update_progress_or_raise(
         task=task,
         worker_id=worker_id,
@@ -188,6 +243,8 @@ def process_repository_analysis_task(
             owner=task.repository_owner,
             repository_name=task.repository_name,
         )
+
+        heartbeat.raise_if_failed()
 
         # 第二阶段：将分支或 Tag 解析为固定 Commit
         _update_progress_or_raise(
@@ -208,12 +265,16 @@ def process_repository_analysis_task(
             ref=requested_ref,
         )
 
+    heartbeat.raise_if_failed()
+
     acquisition = GitHubRepositoryAcquisition(
         metadata=metadata,
         commit=commit,
     )
 
     # 先保存仓库版本解析结果
+    heartbeat.raise_if_failed()
+
     with Session(engine) as session:
         updated_task = (
             update_repository_resolution_metadata(
@@ -231,6 +292,8 @@ def process_repository_analysis_task(
             "Unable to persist resolved repository commit",
         )
 
+    heartbeat.raise_if_failed()
+
     # 第三阶段：下载固定 Commit 对应的 ZIP 快照
     _update_progress_or_raise(
         task=task,
@@ -246,6 +309,8 @@ def process_repository_analysis_task(
             commit_sha=commit.sha,
             task_id=task.id,
         )
+
+    heartbeat.raise_if_failed()
 
     # 保存快照来源和本地解压路径
     with Session(engine) as session:
@@ -266,6 +331,8 @@ def process_repository_analysis_task(
             "Unable to persist repository snapshot metadata",
         )
 
+    heartbeat.raise_if_failed()
+
     # 第四阶段：扫描已经下载并解压的仓库
     _update_progress_or_raise(
         task=task,
@@ -277,6 +344,8 @@ def process_repository_analysis_task(
     scan = scan_repository_structure(
         snapshot.repository_root,
     )
+
+    heartbeat.raise_if_failed()
 
     # 第五阶段：根据扫描结果分析代码
     _update_progress_or_raise(
@@ -290,11 +359,15 @@ def process_repository_analysis_task(
         snapshot.repository_root,
     )
 
+    heartbeat.raise_if_failed()
+
     fastapi_router_analysis = (
         analyze_fastapi_router_graph(
             snapshot.repository_root,
         )
     )
+
+    heartbeat.raise_if_failed()
 
     _update_progress_or_raise(
         task=task,
@@ -311,6 +384,8 @@ def process_repository_analysis_task(
             ),
         )
     )
+
+    heartbeat.raise_if_failed()
 
     _update_progress_or_raise(
         task=task,
@@ -330,6 +405,8 @@ def process_repository_analysis_task(
             ),
         )
     )
+
+    heartbeat.raise_if_failed()
 
     # 第六阶段：根据扫描结果构建 Evidence
     _update_progress_or_raise(
@@ -356,6 +433,8 @@ def process_repository_analysis_task(
         ),
     )
 
+    heartbeat.raise_if_failed()
+
     # 第七阶段：生成并保存最终报告
     _update_progress_or_raise(
         task=task,
@@ -363,6 +442,8 @@ def process_repository_analysis_task(
         stage="generating_report",
         progress_percent=94,
     )
+
+    heartbeat.raise_if_failed()
 
     with Session(engine) as session:
         completed_task = (
@@ -380,6 +461,8 @@ def process_repository_analysis_task(
         raise RepositoryAnalysisWorkerError(
             "The worker no longer owns the claimed task",
         )
+
+
 def _update_progress_or_raise(
     *,
     task: RepositoryAnalysisTask,
@@ -539,10 +622,10 @@ def _persist_task_failure(
     exception: Exception,
 ) -> None:
     """
-    使用新的数据库会话记录任务失败。
+    使用新的数据库会话记录普通业务失败。
 
-    使用新会话是为了避免原处理会话已经处于
-    rollback required 状态，导致错误信息无法落库。
+    若租约已经丢失，旧 Worker 不得修改任务状态，
+    也不得清理新 Worker 可能正在使用的快照。
     """
 
     error_code, error_message = (
@@ -555,14 +638,14 @@ def _persist_task_failure(
 
     if not error_message:
         error_message = (
-            "Repository analysis workers failed"
+            "Repository analysis worker failed"
         )
 
     error_message = error_message[:4000]
 
     try:
         with Session(engine) as session:
-            failed_task = fail_repository_analysis_task(
+            fail_repository_analysis_task(
                 session=session,
                 task_id=task.id,
                 worker_id=worker_id,
@@ -570,44 +653,131 @@ def _persist_task_failure(
                 error_message=error_message,
             )
 
-        if failed_task is None:
-            logger.error(
-                "Could not persist failure for task %s "
-                "because task ownership was lost",
-                task.id,
-            )
-
-            return
-
-        try:
-            with Session(engine) as cleanup_session:
-                cleanup_action = (
-                    cleanup_repository_analysis_task_snapshot(
-                        session=cleanup_session,
-                        task_id=task.id,
-                        force_reason="failed_task",
-                    )
-                )
-
-            if cleanup_action.reference_cleared:
-                logger.info(
-                    "Cleaned repository snapshot "
-                    "for failed task %s",
-                    task.id,
-                )
-        except Exception:
-            logger.exception(
-                "Could not clean repository snapshot "
-                "for failed task %s",
-                task.id,
-            )
+    except RepositoryAnalysisLeaseLostError:
+        logger.warning(
+            "Could not persist failure for task %s "
+            "because task ownership was lost",
+            task.id,
+            exc_info=True,
+        )
+        return
 
     except Exception:
         logger.exception(
             "Could not persist failure state for task %s",
             task.id,
         )
+        return
 
+    try:
+        with Session(engine) as cleanup_session:
+            cleanup_action = (
+                cleanup_repository_analysis_task_snapshot(
+                    session=cleanup_session,
+                    task_id=task.id,
+                    force_reason="failed_task",
+                )
+            )
+
+        if cleanup_action.reference_cleared:
+            logger.info(
+                "Cleaned repository snapshot "
+                "for failed task %s",
+                task.id,
+            )
+
+    except Exception:
+        logger.exception(
+            "Could not clean repository snapshot "
+            "for failed task %s",
+            task.id,
+        )
+
+
+
+def _get_heartbeat_interval_seconds() -> float:
+    """
+    读取心跳间隔，默认 30 秒。
+    """
+
+    return _read_positive_float_environment(
+        "REPOSITORY_ANALYSIS_HEARTBEAT_INTERVAL_SECONDS",
+        default=(
+            DEFAULT_REPOSITORY_ANALYSIS_HEARTBEAT_INTERVAL_SECONDS
+        ),
+    )
+
+
+def _get_lease_seconds() -> int:
+    """
+    读取租约时长，默认 90 秒。
+    """
+
+    lease_seconds = _read_positive_integer_environment(
+        "REPOSITORY_ANALYSIS_LEASE_SECONDS",
+        default=DEFAULT_REPOSITORY_ANALYSIS_LEASE_SECONDS,
+    )
+
+    heartbeat_interval = _get_heartbeat_interval_seconds()
+
+    if lease_seconds <= heartbeat_interval:
+        raise ValueError(
+            "REPOSITORY_ANALYSIS_LEASE_SECONDS must be "
+            "greater than "
+            "REPOSITORY_ANALYSIS_HEARTBEAT_INTERVAL_SECONDS"
+        )
+
+    return lease_seconds
+
+
+def _read_positive_float_environment(
+    name: str,
+    *,
+    default: float,
+) -> float:
+    raw_value = os.getenv(name)
+
+    if raw_value is None or not raw_value.strip():
+        return float(default)
+
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise ValueError(
+            f"{name} must be a number",
+        ) from exc
+
+    if value <= 0:
+        raise ValueError(
+            f"{name} must be greater than zero",
+        )
+
+    return value
+
+
+def _read_positive_integer_environment(
+    name: str,
+    *,
+    default: int,
+) -> int:
+    raw_value = os.getenv(name)
+
+    if raw_value is None or not raw_value.strip():
+        return int(default)
+
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(
+            f"{name} must be an integer",
+        ) from exc
+
+    if value <= 0:
+        raise ValueError(
+            f"{name} must be greater than zero",
+        )
+
+    return value
 
 def run_repository_analysis_worker(
     *,
@@ -731,11 +901,11 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--workers-id",
-        default=None,
-        help=(
-            "Optional explicit workers identifier"
-        ),
+        "--worker-id",
+        dest="worker_id",
+        type=str,
+        default="repository-analysis-worker",
+        help="Unique identifier for this worker process",
     )
 
     parser.add_argument(
@@ -788,48 +958,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

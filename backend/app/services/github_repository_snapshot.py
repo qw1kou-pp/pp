@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
@@ -13,6 +14,9 @@ from typing import BinaryIO
 from urllib.parse import quote
 
 import httpx
+
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_GITHUB_API_URL = "https://api.github.com"
@@ -434,26 +438,16 @@ class GitHubRepositorySnapshotDownloader:
                 mode="r",
             ) as archive:
                 for member in archive.infolist():
-                    relative_path = (
-                        self._validate_member(
-                            member,
+                    relative_path = self._validate_member(
+                        member,
+                    )
+
+                    if relative_path is None:
+                        logger.info(
+                            "Skipping symbolic link in repository ZIP: %s",
+                            member.filename,
                         )
-                    )
-
-                    normalized_key = (
-                        relative_path.as_posix()
-                    )
-
-                    if normalized_key in normalized_paths:
-                        raise (
-                            GitHubRepositorySnapshotUnsafeArchiveError(
-                                "ZIP contains duplicate paths",
-                            )
-                        )
-
-                    normalized_paths.add(
-                        normalized_key,
-                    )
+                        continue
 
                     if member.is_dir():
                         continue
@@ -509,7 +503,7 @@ class GitHubRepositorySnapshotDownloader:
     def _validate_member(
         self,
         member: zipfile.ZipInfo,
-    ) -> Path:
+    ) -> PurePosixPath | None:
         """
         校验一个 ZIP 成员的路径与文件类型。
         """
@@ -578,10 +572,8 @@ class GitHubRepositorySnapshotDownloader:
             member.external_attr >> 16
         ) & 0xFFFF
 
-        if stat.S_ISLNK(mode):
-            raise GitHubRepositorySnapshotUnsafeArchiveError(
-                "ZIP contains a symbolic link",
-            )
+        if self._is_symbolic_link(member):
+            return None
 
         file_type = stat.S_IFMT(mode)
 
@@ -594,7 +586,7 @@ class GitHubRepositorySnapshotDownloader:
                 "ZIP contains a special filesystem entry",
             )
 
-        return Path(*path_parts)
+        return pure_path
 
     def _extract_archive(
         self,
@@ -623,11 +615,16 @@ class GitHubRepositorySnapshotDownloader:
                 mode="r",
             ) as archive:
                 for member in archive.infolist():
-                    relative_path = (
-                        self._validate_member(
-                            member,
-                        )
+                    relative_path = self._validate_member(
+                        member,
                     )
+
+                    if relative_path is None:
+                        logger.info(
+                            "Skipping symbolic link in repository ZIP: %s",
+                            member.filename,
+                        )
+                        continue
 
                     target_path = (
                         extraction_root
@@ -771,6 +768,15 @@ class GitHubRepositorySnapshotDownloader:
             return children[0].resolve()
 
         return extraction_root
+
+    @staticmethod
+    def _is_symbolic_link(member: zipfile.ZipInfo) -> bool:
+        unix_mode = (member.external_attr >> 16) & 0xFFFF
+
+        if unix_mode == 0:
+            return False
+
+        return stat.S_ISLNK(unix_mode)
 
 
 def cleanup_repository_snapshot(

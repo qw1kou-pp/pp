@@ -48,14 +48,14 @@ type ReviewMetricChange =
   ]["changed_file_count"]
 
 type FindingChangeItem =
-  CodeReviewCompareResponse[
-    "finding_changes"
-  ]["added"][number]
+  NonNullable<
+  CodeReviewComparePublic["added_findings"]
+>[number]
 
 type TestChangeItem =
-  CodeReviewCompareResponse[
-    "test_changes"
-  ]["added"][number]
+  NonNullable<
+  CodeReviewComparePublic["added_tests"]
+>[number]
 
 type TraceMetricChange =
   NonNullable<
@@ -1320,7 +1320,7 @@ export function CodeReviewComparePanel({
               findings={
                 result
                   .finding_changes
-                  .added
+                  .added?? []
               }
               emptyText="目标版本没有新增 Finding。"
               tone="added"
@@ -1332,7 +1332,7 @@ export function CodeReviewComparePanel({
               findings={
                 result
                   .finding_changes
-                  .resolved
+                  .resolved?? []
               }
               emptyText="没有识别出已解决的 Finding。"
               tone="resolved"
@@ -1344,7 +1344,7 @@ export function CodeReviewComparePanel({
               findings={
                 result
                   .finding_changes
-                  .persisting
+                  .persisting?? []
               }
               emptyText="没有持续存在的 Finding。"
               tone="persisting"
@@ -1367,7 +1367,7 @@ export function CodeReviewComparePanel({
               testItems={
                 result
                   .test_changes
-                  .added
+                  .added?? []
               }
               emptyText="目标版本没有新增测试建议。"
               tone="added"
@@ -1379,7 +1379,7 @@ export function CodeReviewComparePanel({
               testItems={
                 result
                   .test_changes
-                  .removed
+                  .removed?? []
               }
               emptyText="没有被移除的测试建议。"
               tone="removed"
@@ -1391,7 +1391,7 @@ export function CodeReviewComparePanel({
               testItems={
                 result
                   .test_changes
-                  .persisting
+                  .persisting?? []
               }
               emptyText="没有持续保留的测试建议。"
               tone="persisting"

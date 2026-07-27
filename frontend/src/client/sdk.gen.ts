@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { ParseCodeSkillDiffData, ParseCodeSkillDiffResponse, LocateCodeSkillChangedSymbolsData, LocateCodeSkillChangedSymbolsResponse, FindCodeSkillImpactsData, FindCodeSkillImpactsResponse, RecommendCodeSkillTestsData, RecommendCodeSkillTestsResponse, BuildCodeSkillReviewEvidenceData, BuildCodeSkillReviewEvidenceResponse, ResolveCodeReviewSourceData, ResolveCodeReviewSourceResponse, GenerateCodeSkillReviewReportData, GenerateCodeSkillReviewReportResponse, ReadCodeReviewRunsData, ReadCodeReviewRunsResponse, CompareCodeReviewRunsData, CompareCodeReviewRunsResponse, ReadCodeReviewRunDetailData, ReadCodeReviewRunDetailResponse, DeleteCodeReviewRunData, DeleteCodeReviewRunResponse, PreviewGithubCodeReviewPublicationData, PreviewGithubCodeReviewPublicationResponse, PublishGithubCodeReviewData, PublishGithubCodeReviewResponse, ReadCodeReviewPublicationsData, ReadCodeReviewPublicationsResponse, DocumentsDownloadDocumentData, DocumentsDownloadDocumentResponse, DocumentsUploadDocumentData, DocumentsUploadDocumentResponse, DocumentsReadDocumentsByKnowledgeBaseData, DocumentsReadDocumentsByKnowledgeBaseResponse, UploadCodeRepositoryZipData, UploadCodeRepositoryZipResponse, DocumentsReadDocumentChunksData, DocumentsReadDocumentChunksResponse, DocumentsSearchKnowledgeBaseChunksData, DocumentsSearchKnowledgeBaseChunksResponse, SemanticSearchKnowledgeBaseChunksData, SemanticSearchKnowledgeBaseChunksResponse, ChatWithKnowledgeBaseData, ChatWithKnowledgeBaseResponse, AgentChatWithKnowledgeBaseData, AgentChatWithKnowledgeBaseResponse, ReadAgentRunsData, ReadAgentRunsResponse, DeleteAgentRunData, DeleteAgentRunResponse, ReadKnowledgeBaseAgentSettingsData, ReadKnowledgeBaseAgentSettingsResponse, UpdateKnowledgeBaseAgentSettingsData, UpdateKnowledgeBaseAgentSettingsResponse, ReadKnowledgeBaseRagRunsData, ReadKnowledgeBaseRagRunsResponse, DeleteRagRunData, DeleteRagRunResponse, BackfillKnowledgeBaseEmbeddingsData, BackfillKnowledgeBaseEmbeddingsResponse, CreateRagEvalCaseData, CreateRagEvalCaseResponse, ReadRagEvalCasesData, ReadRagEvalCasesResponse, SeedCodeEvalCasesData, SeedCodeEvalCasesResponse, GetCodeEvalTypeCompareSummaryData, GetCodeEvalTypeCompareSummaryResponse, ReadRagAgentCompareFailureAnalysisData, ReadRagAgentCompareFailureAnalysisResponse, DeleteRagEvalCaseData, DeleteRagEvalCaseResponse, RunRagEvalCaseData, RunRagEvalCaseResponse, CreateRagRetrievalPresetData, CreateRagRetrievalPresetResponse, ReadRagRetrievalPresetsData, ReadRagRetrievalPresetsResponse, DeleteRagRetrievalPresetData, DeleteRagRetrievalPresetResponse, RunRagAgentCompareEvalData, RunRagAgentCompareEvalResponse, ReadRagAgentCompareBatchesData, ReadRagAgentCompareBatchesResponse, ReadRagAgentCompareBatchData, ReadRagAgentCompareBatchResponse, DeleteRagAgentCompareBatchData, DeleteRagAgentCompareBatchResponse, ReadCodeAgentExperimentReportData, ReadCodeAgentExperimentReportResponse, ReadRagAgentCompareBatchReportData, ReadRagAgentCompareBatchReportResponse, ReadRagAgentCompareBatchDocxReportData, ReadRagAgentCompareBatchDocxReportResponse, ReadRagAgentCompareBatchPdfReportData, ReadRagAgentCompareBatchPdfReportResponse, RunAllRagEvalCasesData, RunAllRagEvalCasesResponse, ReadRagEvalBatchesData, ReadRagEvalBatchesResponse, DeleteRagEvalBatchData, DeleteRagEvalBatchResponse, ReadRagEvalSummaryData, ReadRagEvalSummaryResponse, ReadRagEvalRunsData, ReadRagEvalRunsResponse, ReadRagEvalFailureAnalysisData, ReadRagEvalFailureAnalysisResponse, ReadRagEvalParamGroupsData, ReadRagEvalParamGroupsResponse, DocumentsReadDocumentData, DocumentsReadDocumentResponse, DocumentsDeleteDocumentData, DocumentsDeleteDocumentResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, KnowledgeBasesReadKnowledgeBasesData, KnowledgeBasesReadKnowledgeBasesResponse, KnowledgeBasesCreateKnowledgeBaseData, KnowledgeBasesCreateKnowledgeBaseResponse, KnowledgeBasesReadKnowledgeBaseData, KnowledgeBasesReadKnowledgeBaseResponse, KnowledgeBasesUpdateKnowledgeBaseData, KnowledgeBasesUpdateKnowledgeBaseResponse, KnowledgeBasesDeleteKnowledgeBaseData, KnowledgeBasesDeleteKnowledgeBaseResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PrivateCreateUserData, PrivateCreateUserResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
+import type { ParseCodeSkillDiffData, ParseCodeSkillDiffResponse, LocateCodeSkillChangedSymbolsData, LocateCodeSkillChangedSymbolsResponse, FindCodeSkillImpactsData, FindCodeSkillImpactsResponse, RecommendCodeSkillTestsData, RecommendCodeSkillTestsResponse, BuildCodeSkillReviewEvidenceData, BuildCodeSkillReviewEvidenceResponse, ResolveCodeReviewSourceData, ResolveCodeReviewSourceResponse, GenerateCodeSkillReviewReportData, GenerateCodeSkillReviewReportResponse, ReadCodeReviewRunsData, ReadCodeReviewRunsResponse, CompareCodeReviewRunsData, CompareCodeReviewRunsResponse, ReadCodeReviewRunDetailData, ReadCodeReviewRunDetailResponse, DeleteCodeReviewRunData, DeleteCodeReviewRunResponse, PreviewGithubCodeReviewPublicationData, PreviewGithubCodeReviewPublicationResponse, PublishGithubCodeReviewData, PublishGithubCodeReviewResponse, ReadCodeReviewPublicationsData, ReadCodeReviewPublicationsResponse, DocumentsDownloadDocumentData, DocumentsDownloadDocumentResponse, DocumentsUploadDocumentData, DocumentsUploadDocumentResponse, DocumentsReadDocumentsByKnowledgeBaseData, DocumentsReadDocumentsByKnowledgeBaseResponse, UploadCodeRepositoryZipData, UploadCodeRepositoryZipResponse, DocumentsReadDocumentChunksData, DocumentsReadDocumentChunksResponse, DocumentsSearchKnowledgeBaseChunksData, DocumentsSearchKnowledgeBaseChunksResponse, SemanticSearchKnowledgeBaseChunksData, SemanticSearchKnowledgeBaseChunksResponse, ChatWithKnowledgeBaseData, ChatWithKnowledgeBaseResponse, AgentChatWithKnowledgeBaseData, AgentChatWithKnowledgeBaseResponse, ReadAgentRunsData, ReadAgentRunsResponse, DeleteAgentRunData, DeleteAgentRunResponse, ReadKnowledgeBaseAgentSettingsData, ReadKnowledgeBaseAgentSettingsResponse, UpdateKnowledgeBaseAgentSettingsData, UpdateKnowledgeBaseAgentSettingsResponse, ReadKnowledgeBaseRagRunsData, ReadKnowledgeBaseRagRunsResponse, DeleteRagRunData, DeleteRagRunResponse, BackfillKnowledgeBaseEmbeddingsData, BackfillKnowledgeBaseEmbeddingsResponse, CreateRagEvalCaseData, CreateRagEvalCaseResponse, ReadRagEvalCasesData, ReadRagEvalCasesResponse, SeedCodeEvalCasesData, SeedCodeEvalCasesResponse, GetCodeEvalTypeCompareSummaryData, GetCodeEvalTypeCompareSummaryResponse, ReadRagAgentCompareFailureAnalysisData, ReadRagAgentCompareFailureAnalysisResponse, DeleteRagEvalCaseData, DeleteRagEvalCaseResponse, RunRagEvalCaseData, RunRagEvalCaseResponse, CreateRagRetrievalPresetData, CreateRagRetrievalPresetResponse, ReadRagRetrievalPresetsData, ReadRagRetrievalPresetsResponse, DeleteRagRetrievalPresetData, DeleteRagRetrievalPresetResponse, RunRagAgentCompareEvalData, RunRagAgentCompareEvalResponse, ReadRagAgentCompareBatchesData, ReadRagAgentCompareBatchesResponse, ReadRagAgentCompareBatchData, ReadRagAgentCompareBatchResponse, DeleteRagAgentCompareBatchData, DeleteRagAgentCompareBatchResponse, ReadCodeAgentExperimentReportData, ReadCodeAgentExperimentReportResponse, ReadRagAgentCompareBatchReportData, ReadRagAgentCompareBatchReportResponse, ReadRagAgentCompareBatchDocxReportData, ReadRagAgentCompareBatchDocxReportResponse, ReadRagAgentCompareBatchPdfReportData, ReadRagAgentCompareBatchPdfReportResponse, RunAllRagEvalCasesData, RunAllRagEvalCasesResponse, ReadRagEvalBatchesData, ReadRagEvalBatchesResponse, DeleteRagEvalBatchData, DeleteRagEvalBatchResponse, ReadRagEvalSummaryData, ReadRagEvalSummaryResponse, ReadRagEvalRunsData, ReadRagEvalRunsResponse, ReadRagEvalFailureAnalysisData, ReadRagEvalFailureAnalysisResponse, ReadRagEvalParamGroupsData, ReadRagEvalParamGroupsResponse, DocumentsReadDocumentData, DocumentsReadDocumentResponse, DocumentsDeleteDocumentData, DocumentsDeleteDocumentResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, KnowledgeBasesReadKnowledgeBasesData, KnowledgeBasesReadKnowledgeBasesResponse, KnowledgeBasesCreateKnowledgeBaseData, KnowledgeBasesCreateKnowledgeBaseResponse, KnowledgeBasesReadKnowledgeBaseData, KnowledgeBasesReadKnowledgeBaseResponse, KnowledgeBasesUpdateKnowledgeBaseData, KnowledgeBasesUpdateKnowledgeBaseResponse, KnowledgeBasesDeleteKnowledgeBaseData, KnowledgeBasesDeleteKnowledgeBaseResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PrivateCreateUserData, PrivateCreateUserResponse, RepositoryAnalysesCreateRepositoryAnalysisData, RepositoryAnalysesCreateRepositoryAnalysisResponse, RepositoryAnalysesReadRepositoryAnalysesData, RepositoryAnalysesReadRepositoryAnalysesResponse, RepositoryAnalysesReadRepositoryAnalysisData, RepositoryAnalysesReadRepositoryAnalysisResponse, RepositoryAnalysesSaveRepositoryAnalysisData, RepositoryAnalysesSaveRepositoryAnalysisResponse, BindRepositoryAnalysisKnowledgeBaseData, BindRepositoryAnalysisKnowledgeBaseResponse, ImportRepositoryAnalysisKnowledgeBaseData, ImportRepositoryAnalysisKnowledgeBaseResponse, ReadRepositoryAnalysisEmbeddingStatusData, ReadRepositoryAnalysisEmbeddingStatusResponse, BackfillRepositoryAnalysisEmbeddingsData, BackfillRepositoryAnalysisEmbeddingsResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
 
 export class CodeSkillService {
     /**
@@ -562,6 +562,7 @@ export class DocumentsService {
      * @param data.skip
      * @param data.limit
      * @param data.keyword
+     * @param data.repositoryAnalysisTaskId
      * @returns AgentRunsPublic Successful Response
      * @throws ApiError
      */
@@ -575,7 +576,8 @@ export class DocumentsService {
             query: {
                 skip: data.skip,
                 limit: data.limit,
-                keyword: data.keyword
+                keyword: data.keyword,
+                repository_analysis_task_id: data.repositoryAnalysisTaskId
             },
             errors: {
                 422: 'Validation Error'
@@ -653,6 +655,7 @@ export class DocumentsService {
      * @param data.skip
      * @param data.limit
      * @param data.keyword
+     * @param data.repositoryAnalysisTaskId
      * @returns RagRunsPublic Successful Response
      * @throws ApiError
      */
@@ -666,7 +669,8 @@ export class DocumentsService {
             query: {
                 skip: data.skip,
                 limit: data.limit,
-                keyword: data.keyword
+                keyword: data.keyword,
+                repository_analysis_task_id: data.repositoryAnalysisTaskId
             },
             errors: {
                 422: 'Validation Error'
@@ -1691,6 +1695,191 @@ export class PrivateService {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/api/v1/private/users/',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class RepositoryAnalysesService {
+    /**
+     * Create Repository Analysis
+     * 创建公开 GitHub 仓库快速概览任务。
+     *
+     * 这里只创建 queued 任务，不在 HTTP 请求中执行仓库分析。
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns RepositoryAnalysisTaskPublic Successful Response
+     * @throws ApiError
+     */
+    public static createRepositoryAnalysis(data: RepositoryAnalysesCreateRepositoryAnalysisData): CancelablePromise<RepositoryAnalysesCreateRepositoryAnalysisResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/repository-analyses',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Repository Analyses
+     * 分页查询当前登录用户的仓库分析任务。
+     *
+     * status 可选值：
+     * queued、running、completed、failed、expired。
+     * @param data The data for the request.
+     * @param data.skip
+     * @param data.limit
+     * @param data.status
+     * @returns RepositoryAnalysisTasksPublic Successful Response
+     * @throws ApiError
+     */
+    public static readRepositoryAnalyses(data: RepositoryAnalysesReadRepositoryAnalysesData = {}): CancelablePromise<RepositoryAnalysesReadRepositoryAnalysesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/repository-analyses',
+            query: {
+                skip: data.skip,
+                limit: data.limit,
+                status: data.status
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Repository Analysis
+     * 查询当前用户的一条仓库分析任务详情。
+     * @param data The data for the request.
+     * @param data.taskId
+     * @returns RepositoryAnalysisTaskPublic Successful Response
+     * @throws ApiError
+     */
+    public static readRepositoryAnalysis(data: RepositoryAnalysesReadRepositoryAnalysisData): CancelablePromise<RepositoryAnalysesReadRepositoryAnalysisResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/repository-analyses/{task_id}',
+            path: {
+                task_id: data.taskId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Save Repository Analysis
+     * 将完成的临时仓库概览保存为长期记录。
+     * @param data The data for the request.
+     * @param data.taskId
+     * @returns RepositoryAnalysisTaskPublic Successful Response
+     * @throws ApiError
+     */
+    public static saveRepositoryAnalysis(data: RepositoryAnalysesSaveRepositoryAnalysisData): CancelablePromise<RepositoryAnalysesSaveRepositoryAnalysisResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/repository-analyses/{task_id}/save',
+            path: {
+                task_id: data.taskId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Bind Repository Analysis Knowledge Base Endpoint
+     * 选择或创建知识库，并绑定仓库分析任务。
+     * @param data The data for the request.
+     * @param data.taskId
+     * @param data.requestBody
+     * @returns RepositoryAnalysisKnowledgeBaseBindingPublic Successful Response
+     * @throws ApiError
+     */
+    public static bindRepositoryAnalysisKnowledgeBase(data: BindRepositoryAnalysisKnowledgeBaseData): CancelablePromise<BindRepositoryAnalysisKnowledgeBaseResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/repository-analyses/{task_id}/knowledge-base',
+            path: {
+                task_id: data.taskId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Import Repository Analysis Knowledge Base
+     * 把仓库分析任务固定的 Commit
+     * 导入已经绑定的知识库。
+     * @param data The data for the request.
+     * @param data.taskId
+     * @returns RepositoryAnalysisKnowledgeImportPublic Successful Response
+     * @throws ApiError
+     */
+    public static importRepositoryAnalysisKnowledgeBase(data: ImportRepositoryAnalysisKnowledgeBaseData): CancelablePromise<ImportRepositoryAnalysisKnowledgeBaseResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/repository-analyses/{task_id}/knowledge-base/import',
+            path: {
+                task_id: data.taskId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Repository Analysis Embedding Status
+     * 查询当前仓库代码块的索引状态。
+     * @param data The data for the request.
+     * @param data.taskId
+     * @returns RepositoryAnalysisEmbeddingStatusPublic Successful Response
+     * @throws ApiError
+     */
+    public static readRepositoryAnalysisEmbeddingStatus(data: ReadRepositoryAnalysisEmbeddingStatusData): CancelablePromise<ReadRepositoryAnalysisEmbeddingStatusResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/repository-analyses/{task_id}/knowledge-base/embedding-status',
+            path: {
+                task_id: data.taskId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Backfill Repository Analysis Embeddings
+     * 为当前仓库任务处理一批 Embedding。
+     * @param data The data for the request.
+     * @param data.taskId
+     * @param data.requestBody
+     * @returns RepositoryAnalysisEmbeddingBatchPublic Successful Response
+     * @throws ApiError
+     */
+    public static backfillRepositoryAnalysisEmbeddings(data: BackfillRepositoryAnalysisEmbeddingsData): CancelablePromise<BackfillRepositoryAnalysisEmbeddingsResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/repository-analyses/{task_id}/knowledge-base/embeddings/backfill',
+            path: {
+                task_id: data.taskId
+            },
             body: data.requestBody,
             mediaType: 'application/json',
             errors: {

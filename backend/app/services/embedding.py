@@ -127,7 +127,16 @@ def semantic_search_chunks(
     knowledge_base_id: uuid.UUID,
     query: str,
     top_k: int,
-) -> list[tuple[DocumentChunk, Document, float]]:
+    repository_analysis_task_id: (
+        uuid.UUID | None
+    ) = None,
+) -> list[
+    tuple[
+        DocumentChunk,
+        Document,
+        float,
+    ]
+]:
     query_embedding = get_embedding(query)
 
     statement = (
@@ -137,6 +146,11 @@ def semantic_search_chunks(
         .where(DocumentChunk.embedding_status == "embedded")
         .where(col(DocumentChunk.embedding).is_not(None))
     )
+    if repository_analysis_task_id is not None:
+        statement = statement.where(
+            Document.repository_analysis_task_id
+            == repository_analysis_task_id,
+        )
 
     rows = session.exec(statement).all()
 

@@ -107,6 +107,7 @@ from app.models import (
     RagAgentCompareFailureCasePublic,
     RagAgentCompareFailureAnalysisPublic,
     CodeAgentExperimentReportPublic,
+    RepositoryAnalysisTask,
 )
 from app.services.rag import (
     build_search_terms,
@@ -114,6 +115,7 @@ from app.services.rag import (
     generate_rag_answer,
     retrieve_chunks_for_rag,
     hybrid_retrieve_chunks_for_rag,
+    build_rag_chat_source,
 )
 from app.services.embedding import (
     EmbeddingError,
@@ -233,6 +235,82 @@ def check_knowledge_base_permission(
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
 
+def resolve_repository_analysis_scope(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    knowledge_base_id: uuid.UUID,
+    repository_analysis_task_id:
+        uuid.UUID | None,
+) -> uuid.UUID | None:
+    if (
+        repository_analysis_task_id
+        is None
+    ):
+        return None
+
+    task = session.get(
+        RepositoryAnalysisTask,
+        repository_analysis_task_id,
+    )
+
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code":
+                    "REPOSITORY_ANALYSIS_NOT_FOUND",
+                "message":
+                    "Repository analysis task not found",
+            },
+        )
+
+    if (
+        not current_user.is_superuser
+        and task.owner_id
+        != current_user.id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code":
+                    "REPOSITORY_ANALYSIS_FORBIDDEN",
+                "message":
+                    "You do not have permission to use this repository analysis task",
+            },
+        )
+
+    if (
+        task.knowledge_base_id
+        != knowledge_base_id
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code":
+                    "REPOSITORY_ANALYSIS_KNOWLEDGE_BASE_MISMATCH",
+                "message":
+                    "Repository analysis task does not belong to this knowledge base",
+            },
+        )
+
+    if (
+        task.status != "completed"
+        or task.analysis_mode
+        != "deep"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code":
+                    "REPOSITORY_ANALYSIS_NOT_READY_FOR_CHAT",
+                "message":
+                    "Repository analysis task is not ready for repository-scoped chat",
+            },
+        )
+
+    return task.id
+
 def get_document_or_404(
     *,
     session: SessionDep,
@@ -279,6 +357,8 @@ def rag_run_to_public(rag_run: RagRun) -> RagRunPublic:
         id=rag_run.id,
         knowledge_base_id=rag_run.knowledge_base_id,
         owner_id=rag_run.owner_id,
+        repository_analysis_task_id=rag_run.repository_analysis_task_id,
+        source_commit_sha=rag_run.source_commit_sha,
         question=rag_run.question,
         answer=rag_run.answer,
         retrieval_type=rag_run.retrieval_type,
@@ -2293,6 +2373,8 @@ def agent_run_to_public(agent_run: AgentRun) -> AgentRunPublic:
         id=agent_run.id,
         knowledge_base_id=agent_run.knowledge_base_id,
         owner_id=agent_run.owner_id,
+        repository_analysis_task_id=agent_run.repository_analysis_task_id,
+        source_commit_sha=agent_run.source_commit_sha,
         question=agent_run.question,
         answer=agent_run.answer,
         top_k=agent_run.top_k,
@@ -2554,14 +2636,21 @@ def run_agent_once_for_compare(
 ]:
     started_at = time.perf_counter()
 
-    answer, tool_calls, sources, trace = run_knowledge_base_agent(
-        session=session,
-        knowledge_base_id=knowledge_base_id,
-        question=question,
-        top_k=top_k,
-        max_steps=max_steps,
-        semantic_weight=semantic_weight,
-        keyword_weight=keyword_weight,
+    answer, tool_calls, sources, trace = (
+        run_knowledge_base_agent(
+            session=session,
+            knowledge_base_id=
+            knowledge_base_id,
+            repository_analysis_task_id=
+            repository_scope_id,
+            question=question,
+            top_k=request.top_k,
+            max_steps=request.max_steps,
+            semantic_weight=
+            request.semantic_weight,
+            keyword_weight=
+            request.keyword_weight,
+        )
     )
 
     latency_ms = int((time.perf_counter() - started_at) * 1000)
@@ -3932,6 +4021,46 @@ def chat_with_knowledge_base(
     if not question:
         raise HTTPException(status_code=400, detail="Question is required")
 
+    repository_scope_id = (
+        resolve_repository_analysis_scope(
+            session=session,
+            current_user=current_user,
+            knowledge_base_id=
+            knowledge_base_id,
+            repository_analysis_task_id=
+            request
+                .repository_analysis_task_id,
+        )
+    )
+    repository_scope_task = None
+
+    if repository_scope_id is not None:
+        repository_scope_task = (
+            session.get(
+                RepositoryAnalysisTask,
+                repository_scope_id,
+            )
+        )
+
+        if repository_scope_task is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": (
+                        "REPOSITORY_ANALYSIS_"
+                        "NOT_FOUND"
+                    ),
+                    "message": (
+                        "Repository analysis "
+                        "task not found"
+                    ),
+                },
+            )
+    if repository_scope_id is not None:
+        trace.append(
+            "repository_scope="
+            f"{repository_scope_id}",
+        )
     trace.append("check_permission")
     semantic_weight, keyword_weight = normalize_retrieval_weights(
         semantic_weight=request.semantic_weight,
@@ -3942,30 +4071,43 @@ def chat_with_knowledge_base(
         f"retrieval_params_top_k={request.top_k},semantic_weight={semantic_weight:.2f},keyword_weight={keyword_weight:.2f}"
     )
 
-    hybrid_rows = hybrid_retrieve_chunks_for_rag(
-        session=session,
-        knowledge_base_id=knowledge_base_id,
-        query=question,
-        top_k=request.top_k,
-        semantic_weight=semantic_weight,
-        keyword_weight=keyword_weight,
+    hybrid_rows = (
+        hybrid_retrieve_chunks_for_rag(
+            session=session,
+            knowledge_base_id=(
+                knowledge_base_id
+            ),
+            query=question,
+            top_k=request.top_k,
+            semantic_weight=(
+                semantic_weight
+            ),
+            keyword_weight=(
+                keyword_weight
+            ),
+            repository_analysis_task_id=(
+                repository_scope_id
+            ),
+        )
     )
 
     trace.append("hybrid_retrieve_chunks")
 
     sources = [
-        RagChatSource(
-            document_id=document.id,
-            original_filename=document.original_filename,
-            chunk_id=chunk.id,
-            chunk_index=chunk.chunk_index,
-            content=chunk.content,
-            content_length=chunk.content_length,
+        build_rag_chat_source(
+            chunk=chunk,
+            document=document,
             match_count=match_count,
             similarity=similarity,
             retrieval_type="hybrid",
         )
-        for chunk, document, similarity, match_count, hybrid_score in hybrid_rows
+        for (
+            chunk,
+            document,
+            similarity,
+            match_count,
+            _hybrid_score,
+        ) in hybrid_rows
     ]
 
     trace.append("build_hybrid_sources")
@@ -3987,6 +4129,17 @@ def chat_with_knowledge_base(
     rag_run = RagRun(
         knowledge_base_id=knowledge_base_id,
         owner_id=current_user.id,
+        repository_analysis_task_id=(
+            repository_scope_id
+        ),
+
+        source_commit_sha=(
+            repository_scope_task
+                .resolved_commit_sha
+            if repository_scope_task
+               is not None
+            else None
+        ),
         question=question,
         answer=answer,
         retrieval_type=retrieval_type,
@@ -4038,38 +4191,212 @@ def agent_chat_with_knowledge_base(
         current_user=current_user,
     )
 
+    repository_scope_id = (
+        resolve_repository_analysis_scope(
+            session=session,
+            current_user=current_user,
+            knowledge_base_id=
+            knowledge_base_id,
+            repository_analysis_task_id=
+            request
+                .repository_analysis_task_id,
+        )
+    )
+    repository_scope_task = None
+
+    if repository_scope_id is not None:
+        repository_scope_task = (
+            session.get(
+                RepositoryAnalysisTask,
+                repository_scope_id,
+            )
+        )
+
+        if repository_scope_task is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": (
+                        "REPOSITORY_ANALYSIS_"
+                        "NOT_FOUND"
+                    ),
+                    "message": (
+                        "Repository analysis "
+                        "task not found"
+                    ),
+                },
+            )
+
     question = request.question.strip()
 
     if not question:
         raise HTTPException(status_code=400, detail="Question is required")
 
+    if (
+            repository_scope_id
+            is not None
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code":
+                    "REPOSITORY_AGENT_SCOPE_NOT_READY",
+                "message": (
+                    "Repository-scoped Agent is not enabled yet. "
+                    "Agent tools must enforce repository task scope "
+                    "before this request can run."
+                ),
+            },
+        )
+
     started_at = time.perf_counter()
 
-    answer, tool_calls, sources, trace = run_knowledge_base_agent(
-        session=session,
-        knowledge_base_id=knowledge_base_id,
-        question=question,
-        top_k=request.top_k,
-        max_steps=request.max_steps,
-        semantic_weight=request.semantic_weight,
-        keyword_weight=request.keyword_weight,
+    answer, tool_calls, sources, trace = (
+        run_knowledge_base_agent(
+            session=session,
+            knowledge_base_id=(
+                knowledge_base_id
+            ),
+            repository_analysis_task_id=(
+                repository_scope_id
+            ),
+            question=question,
+            top_k=request.top_k,
+            max_steps=request.max_steps,
+            semantic_weight=(
+                request.semantic_weight
+            ),
+            keyword_weight=(
+                request.keyword_weight
+            ),
+        )
     )
 
-    latency_ms = int((time.perf_counter() - started_at) * 1000)
+    if repository_scope_id is not None:
+        invalid_sources = [
+            source
+            for source in sources
+            if (
+                    source.repository_analysis_task_id
+                    != repository_scope_id
+            )
+        ]
+
+        if invalid_sources:
+            invalid_source_details = [
+                {
+                    "chunk_id": str(
+                        source.chunk_id,
+                    ),
+                    "document_id": str(
+                        source.document_id,
+                    ),
+                    "repository_analysis_task_id": (
+                        str(
+                            source.repository_analysis_task_id,
+                        )
+                        if (
+                                source.repository_analysis_task_id
+                                is not None
+                        )
+                        else None
+                    ),
+                    "original_filename": (
+                        source.original_filename
+                    ),
+                    "repository_relative_path": (
+                        source.repository_relative_path
+                    ),
+                }
+                for source in invalid_sources[
+                              :5
+                              ]
+            ]
+
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "code": (
+                        "REPOSITORY_AGENT_"
+                        "SCOPE_VIOLATION"
+                    ),
+                    "message": (
+                        "Repository-scoped Agent "
+                        "returned sources outside "
+                        "the requested repository "
+                        "analysis task"
+                    ),
+                    "invalid_sources": (
+                        invalid_source_details
+                    ),
+                },
+            )
+
+        trace.append(
+            "repository_scope_sources_"
+            f"validated={len(sources)}",
+        )
+
+    latency_ms = int(
+        (
+                time.perf_counter()
+                - started_at
+        )
+        * 1000
+    )
 
     agent_run = AgentRun(
-        knowledge_base_id=knowledge_base_id,
+        knowledge_base_id=(
+            knowledge_base_id
+        ),
+
         owner_id=current_user.id,
+
+        repository_analysis_task_id=(
+            repository_scope_id
+        ),
+
+        source_commit_sha=(
+            repository_scope_task
+                .resolved_commit_sha
+            if repository_scope_task
+               is not None
+            else None
+        ),
+
         question=question,
         answer=answer,
+
         top_k=request.top_k,
         max_steps=request.max_steps,
-        semantic_weight=request.semantic_weight,
-        keyword_weight=request.keyword_weight,
+
+        semantic_weight=(
+            request.semantic_weight
+        ),
+
+        keyword_weight=(
+            request.keyword_weight
+        ),
+
         latency_ms=latency_ms,
-        tool_calls_json=agent_tool_calls_to_json(tool_calls),
-        sources_json=agent_sources_to_json(sources),
-        trace_json=agent_trace_to_json(trace),
+
+        tool_calls_json=(
+            agent_tool_calls_to_json(
+                tool_calls,
+            )
+        ),
+
+        sources_json=(
+            agent_sources_to_json(
+                sources,
+            )
+        ),
+
+        trace_json=(
+            agent_trace_to_json(
+                trace,
+            )
+        ),
     )
 
     session.add(agent_run)
@@ -4099,6 +4426,7 @@ def read_agent_runs(
     skip: int = 0,
     limit: int = 20,
     keyword: str | None = None,
+    repository_analysis_task_id: uuid.UUID | None = None,
 ) -> Any:
     knowledge_base = get_knowledge_base_or_404(
         session=session,
@@ -4108,8 +4436,39 @@ def read_agent_runs(
         knowledge_base=knowledge_base,
         current_user=current_user,
     )
+    repository_scope_id = (
+        resolve_repository_analysis_scope(
+            session=session,
+            current_user=current_user,
+            knowledge_base_id=(
+                knowledge_base_id
+            ),
+            repository_analysis_task_id=(
+                repository_analysis_task_id
+            ),
+        )
+    )
 
-    filters = [AgentRun.knowledge_base_id == knowledge_base_id]
+    filters = [
+        AgentRun.knowledge_base_id
+        == knowledge_base_id,
+    ]
+
+    if repository_scope_id is None:
+        filters.append(
+            col(
+                AgentRun
+                    .repository_analysis_task_id
+            ).is_(
+                None,
+            ),
+        )
+    else:
+        filters.append(
+            AgentRun
+            .repository_analysis_task_id
+            == repository_scope_id,
+        )
 
     if keyword:
         keyword_pattern = f"%{keyword.strip()}%"
@@ -4278,6 +4637,7 @@ def read_knowledge_base_rag_runs(
     skip: int = 0,
     limit: int = 20,
     keyword: str | None = None,
+    repository_analysis_task_id: uuid.UUID | None = None,
 ) -> Any:
     knowledge_base = get_knowledge_base_or_404(
         session=session,
@@ -4287,10 +4647,38 @@ def read_knowledge_base_rag_runs(
         knowledge_base=knowledge_base,
         current_user=current_user,
     )
-
+    repository_scope_id = (
+        resolve_repository_analysis_scope(
+            session=session,
+            current_user=current_user,
+            knowledge_base_id=(
+                knowledge_base_id
+            ),
+            repository_analysis_task_id=(
+                repository_analysis_task_id
+            ),
+        )
+    )
     filters = [
-        RagRun.knowledge_base_id == knowledge_base_id,
+        RagRun.knowledge_base_id
+        == knowledge_base_id,
     ]
+
+    if repository_scope_id is None:
+        filters.append(
+            col(
+                RagRun
+                    .repository_analysis_task_id
+            ).is_(
+                None,
+            ),
+        )
+    else:
+        filters.append(
+            RagRun
+            .repository_analysis_task_id
+            == repository_scope_id,
+        )
 
     if keyword and keyword.strip():
         pattern = f"%{keyword.strip()}%"

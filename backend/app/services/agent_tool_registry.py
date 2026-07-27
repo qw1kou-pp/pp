@@ -23,6 +23,8 @@ from app.services.agent_tools import (
 class AgentToolContext:
     session: Session
     knowledge_base_id: uuid.UUID
+    repository_analysis_task_id: uuid.UUID | None
+
     question: str
     top_k: int
     semantic_weight: float
@@ -81,6 +83,7 @@ def handle_list_documents(
     observation = list_documents_tool(
         session=context.session,
         knowledge_base_id=context.knowledge_base_id,
+        repository_analysis_task_id= context.repository_analysis_task_id,
     )
 
     tool_call = AgentToolCallPublic(
@@ -120,6 +123,7 @@ def handle_list_code_files(
     observation = list_code_files_tool(
         session=context.session,
         knowledge_base_id=context.knowledge_base_id,
+        repository_analysis_task_id= context.repository_analysis_task_id,
         limit=limit,
         language=language,
     )
@@ -169,6 +173,7 @@ def handle_search_code(
     observation, sources = search_code_tool(
         session=context.session,
         knowledge_base_id=context.knowledge_base_id,
+        repository_analysis_task_id=context.repository_analysis_task_id,
         query=query,
         top_k=top_k,
         semantic_weight=context.semantic_weight,
@@ -234,6 +239,7 @@ def handle_read_code_file(
     observation, sources = read_code_file_tool(
         session=context.session,
         knowledge_base_id=context.knowledge_base_id,
+        repository_analysis_task_id=context.repository_analysis_task_id,
         document_id=document_id,
         filename_keyword=filename_keyword,
         max_chunks=max_chunks,
@@ -298,6 +304,7 @@ def handle_find_code_references(
     observation, sources = find_code_references_tool(
         session=context.session,
         knowledge_base_id=context.knowledge_base_id,
+        repository_analysis_task_id=context.repository_analysis_task_id,
         symbol_name=symbol_name,
         language=language,
         filename_keyword=filename_keyword,
@@ -336,6 +343,7 @@ def handle_search_knowledge_base(
     observation, sources = search_knowledge_base_tool(
         session=context.session,
         knowledge_base_id=context.knowledge_base_id,
+        repository_analysis_task_id=context.repository_analysis_task_id,
         query=query,
         top_k=context.top_k,
         semantic_weight=context.semantic_weight,
@@ -406,6 +414,7 @@ def handle_read_document_chunks(
     observation, window_sources = read_document_chunks_tool(
         session=context.session,
         knowledge_base_id=context.knowledge_base_id,
+        repository_analysis_task_id=context.repository_analysis_task_id,
         document_id=document_id,
         center_chunk_index=center_chunk_index,
         window=window,
@@ -442,6 +451,7 @@ def handle_search_rag_history(
     observation = search_rag_history_tool(
         session=context.session,
         knowledge_base_id=context.knowledge_base_id,
+        repository_analysis_task_id=context.repository_analysis_task_id,
         query=query,
         limit=10,
     )
@@ -484,6 +494,7 @@ def handle_summarize_document(
     observation, sources = summarize_document_tool(
         session=context.session,
         knowledge_base_id=context.knowledge_base_id,
+        repository_analysis_task_id=context.repository_analysis_task_id,
         document_id=document_id,
         filename_keyword=filename_keyword,
         max_chunks=max_chunks,
@@ -522,8 +533,12 @@ def handle_final_answer(
     )
 
 
-def get_agent_tools() -> dict[str, AgentTool]:
-    return {
+def get_agent_tools(
+    *,
+    repository_scoped:
+        bool = False,
+) -> dict[str, AgentTool]:
+    tools = {
         "list_documents": AgentTool(
             name="list_documents",
             description="查看当前知识库有哪些文档。适合用户询问知识库里有哪些文件、有哪些资料。",
@@ -634,28 +649,49 @@ def get_agent_tools() -> dict[str, AgentTool]:
             handler=handle_final_answer,
         ),
     }
+    return tools
 
 
-def get_agent_tool_names() -> set[str]:
-    return set(get_agent_tools().keys())
+def get_agent_tool_names(
+    *,
+    repository_scoped:
+        bool = False,
+) -> set[str]:
+    return set(
+        get_agent_tools(
+            repository_scoped=
+                repository_scoped,
+        ).keys(),
+    )
 
 
-def build_agent_tools_prompt_section() -> str:
-    tools = get_agent_tools()
+def build_agent_tools_prompt_section(
+    *,
+    repository_scoped: bool = False,
+) -> str:
+    tools = get_agent_tools(
+        repository_scoped=repository_scoped,
+    )
 
     parts: list[str] = []
 
-    for index, tool in enumerate(tools.values(), start=1):
-        arguments_schema_text = json.dumps(
-            tool.arguments_schema,
-            ensure_ascii=False,
-            indent=2,
+    for index, tool in enumerate(
+        tools.values(),
+        start=1,
+    ):
+        arguments_schema_text = (
+            json.dumps(
+                tool.arguments_schema,
+                ensure_ascii=False,
+                indent=2,
+            )
         )
 
         parts.append(
             f"{index}. {tool.name}\n"
             f"用途：{tool.description}\n"
-            f"参数：\n{arguments_schema_text}"
+            "参数：\n"
+            f"{arguments_schema_text}"
         )
 
     return "\n\n".join(parts)
@@ -697,7 +733,16 @@ def execute_registered_agent_tool(
     arguments: dict[str, Any],
     context: AgentToolContext,
 ) -> AgentToolResult:
-    tools = get_agent_tools()
+    repository_scoped = (
+            context
+            .repository_analysis_task_id
+            is not None
+    )
+
+    tools = get_agent_tools(
+        repository_scoped=
+        repository_scoped,
+    )
 
     tool = tools.get(action)
 
@@ -724,4 +769,40 @@ def execute_registered_agent_tool(
     if result.sources is None:
         result.sources = context.all_sources
 
+    validate_repository_scoped_sources(
+        context=context,
+        sources=result.sources,
+    )
+
     return result
+
+
+def validate_repository_scoped_sources(
+    *,
+    context: AgentToolContext,
+    sources: list[RagChatSource],
+) -> None:
+    task_id = (
+        context
+        .repository_analysis_task_id
+    )
+
+    if task_id is None:
+        return
+
+    invalid_sources = [
+        source
+        for source in sources
+        if (
+            source
+            .repository_analysis_task_id
+            != task_id
+        )
+    ]
+
+    if invalid_sources:
+        raise RuntimeError(
+            "Repository-scoped Agent "
+            "tool returned sources outside "
+            "the requested repository task",
+        )

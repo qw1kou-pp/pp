@@ -36,13 +36,78 @@ def count_keyword_matches(content: str, terms: list[str]) -> int:
     return count
 
 
+def build_rag_chat_source(
+    *,
+    chunk: DocumentChunk,
+    document: Document,
+    match_count: int = 0,
+    similarity: float | None = None,
+    retrieval_type: str = "keyword",
+) -> RagChatSource:
+    """
+    根据 Document 和 DocumentChunk
+    构造统一的 RAG 引用来源。
+
+    仓库导入文档会包含：
+    1. repository_analysis_task_id；
+    2. repository_relative_path；
+    3. source_commit_sha。
+
+    普通上传文档对应字段为 None，
+    不影响原有知识库问答。
+    """
+
+    return RagChatSource(
+        document_id=document.id,
+        original_filename=(
+            document.original_filename
+        ),
+
+        repository_analysis_task_id=(
+            document
+            .repository_analysis_task_id
+        ),
+
+        repository_relative_path=(
+            document
+            .repository_relative_path
+        ),
+
+        source_commit_sha=(
+            document.source_commit_sha
+        ),
+
+        chunk_id=chunk.id,
+        chunk_index=chunk.chunk_index,
+
+        content=chunk.content,
+        content_length=(
+            chunk.content_length
+        ),
+
+        match_count=match_count,
+        similarity=similarity,
+
+        retrieval_type=retrieval_type,
+    )
+
+
 def retrieve_chunks_for_rag(
     *,
     session: Session,
     knowledge_base_id: uuid.UUID,
     query: str,
     top_k: int,
-) -> list[tuple[DocumentChunk, Document, int]]:
+    repository_analysis_task_id: (
+        uuid.UUID | None
+    ) = None,
+) -> list[
+    tuple[
+        DocumentChunk,
+        Document,
+        int,
+    ]
+]:
     """
     RAG 检索阶段。
 
@@ -72,6 +137,11 @@ def retrieve_chunks_for_rag(
         .order_by(col(DocumentChunk.chunk_index))
         .limit(top_k * 3)
     )
+    if repository_analysis_task_id is not None:
+        statement = statement.where(
+            Document.repository_analysis_task_id
+            == repository_analysis_task_id,
+        )
 
     rows = session.exec(statement).all()
 
@@ -100,7 +170,18 @@ def hybrid_retrieve_chunks_for_rag(
     top_k: int,
     semantic_weight: float = 0.75,
     keyword_weight: float = 0.25,
-) -> list[tuple[DocumentChunk, Document, float, int, float]]:
+    repository_analysis_task_id: (
+        uuid.UUID | None
+    ) = None,
+) -> list[
+    tuple[
+        DocumentChunk,
+        Document,
+        float,
+        int,
+        float,
+    ]
+]:
     """
     Hybrid Search：
     同时使用语义检索和关键词检索，然后融合排序。
@@ -113,9 +194,14 @@ def hybrid_retrieve_chunks_for_rag(
     try:
         semantic_rows = semantic_search_chunks(
             session=session,
-            knowledge_base_id=knowledge_base_id,
+            knowledge_base_id=(
+                knowledge_base_id
+            ),
             query=query,
             top_k=top_k * 3,
+            repository_analysis_task_id=(
+                repository_analysis_task_id
+            ),
         )
     except EmbeddingError:
         semantic_rows = []
@@ -130,9 +216,14 @@ def hybrid_retrieve_chunks_for_rag(
 
     keyword_rows = retrieve_chunks_for_rag(
         session=session,
-        knowledge_base_id=knowledge_base_id,
+        knowledge_base_id=(
+            knowledge_base_id
+        ),
         query=query,
         top_k=top_k * 3,
+        repository_analysis_task_id=(
+            repository_analysis_task_id
+        ),
     )
 
     for chunk, document, match_count in keyword_rows:
@@ -183,26 +274,54 @@ def hybrid_retrieve_chunks_for_rag(
 
     return results[:top_k]
 
+
 def build_rag_context(
     *,
     sources: list[RagChatSource],
 ) -> str:
     """
-    Context Builder。
-
-    把检索到的 chunk 组织成大模型能读懂的上下文。
+    把检索来源组织成大模型上下文。
     """
-    context_parts = []
 
-    for index, source in enumerate(sources, start=1):
-        context_parts.append(
-            f"[资料 {index}]\n"
-            f"来源文件：{source.original_filename}\n"
-            f"Chunk：{source.chunk_index}\n"
-            f"内容：\n{source.content}"
+    context_parts: list[str] = []
+
+    for index, source in enumerate(
+        sources,
+        start=1,
+    ):
+        source_path = (
+            source.repository_relative_path
+            or source.original_filename
         )
 
-    return "\n\n".join(context_parts)
+        metadata_lines = [
+            f"[资料 {index}]",
+            f"来源文件：{source_path}",
+        ]
+
+        if source.source_commit_sha:
+            metadata_lines.append(
+                "固定 Commit："
+                f"{source.source_commit_sha}",
+            )
+
+        metadata_lines.extend(
+            [
+                f"Chunk：{source.chunk_index}",
+                "内容：",
+                source.content,
+            ]
+        )
+
+        context_parts.append(
+            "\n".join(
+                metadata_lines,
+            )
+        )
+
+    return "\n\n".join(
+        context_parts,
+    )
 
 
 def build_rag_prompt(

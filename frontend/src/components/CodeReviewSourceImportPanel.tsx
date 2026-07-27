@@ -2,6 +2,7 @@ import {
   useMutation,
 } from "@tanstack/react-query"
 import {
+  useEffect,
   useState,
   type FormEvent,
 } from "react"
@@ -17,8 +18,18 @@ import {
   formatSourceDateTime,
 } from "./codeReviewSourceUtils"
 
+import {
+  buildGitHubPullRequestUrl,
+  formatRepositoryReviewName,
+  type CodeReviewRepositoryPrefill,
+} from "./repositoryReviewHandoff"
+
 type CodeReviewSourceImportPanelProps = {
   knowledgeBaseId: string
+
+  repositoryPrefill?:
+  CodeReviewRepositoryPrefill
+  | null
 
   resolvedSource:
     CodeReviewSourceResolvedPublic
@@ -101,6 +112,7 @@ const getProviderClassName = (
 
 export function CodeReviewSourceImportPanel({
   knowledgeBaseId,
+  repositoryPrefill = null,
   resolvedSource,
   disabled = false,
   onResolved,
@@ -111,16 +123,51 @@ export function CodeReviewSourceImportPanel({
     setSourceUrl,
   ] = useState("")
 
+  const [
+    pullRequestNumber,
+    setPullRequestNumber,
+  ] = useState("")
+
+  const [
+    useRepositoryPrefill,
+    setUseRepositoryPrefill,
+  ] = useState(
+    Boolean(repositoryPrefill),
+  )
+
+  const [
+    inputError,
+    setInputError,
+  ] = useState<string | null>(
+    null,
+  )
+
+  const repositoryPrefillKey =
+    repositoryPrefill
+      ? [
+          repositoryPrefill
+            .repositoryOwner,
+          repositoryPrefill
+            .repositoryName,
+          repositoryPrefill
+            .repositoryUrl,
+          repositoryPrefill
+            .resolvedCommitSha ?? "",
+        ].join("|")
+      : ""
+
   const resolveMutation =
     useMutation({
-      mutationFn: () =>
+      mutationFn: (
+        nextSourceUrl: string,
+      ) =>
         CodeSkillService
           .resolveCodeReviewSource({
             knowledgeBaseId,
 
             requestBody: {
               source_url:
-                sourceUrl.trim(),
+                nextSourceUrl,
             },
           }),
 
@@ -133,31 +180,121 @@ export function CodeReviewSourceImportPanel({
       },
     })
 
+  const resetResolveMutation =
+    resolveMutation.reset
+
+  useEffect(() => {
+    setUseRepositoryPrefill(
+      repositoryPrefillKey.length >
+        0,
+    )
+
+    setPullRequestNumber("")
+    setSourceUrl("")
+    setInputError(null)
+
+    resetResolveMutation()
+  }, [
+    repositoryPrefillKey,
+    resetResolveMutation,
+  ])
+
+
   const handleSubmit = (
-    event: FormEvent<HTMLFormElement>,
+    event:
+      FormEvent<HTMLFormElement>,
   ) => {
     event.preventDefault()
 
     if (
-      !sourceUrl.trim() ||
       disabled ||
       resolveMutation.isPending
     ) {
       return
     }
 
+    setInputError(null)
+
+    let nextSourceUrl =
+      sourceUrl.trim()
+
+    if (
+      useRepositoryPrefill &&
+      repositoryPrefill
+    ) {
+      try {
+        nextSourceUrl =
+          buildGitHubPullRequestUrl(
+            repositoryPrefill,
+            pullRequestNumber,
+          )
+      } catch (error) {
+        setInputError(
+          error instanceof Error
+            ? error.message
+            : "请输入有效的 PR 编号",
+        )
+
+        return
+      }
+    }
+
+    if (!nextSourceUrl) {
+      setInputError(
+        "请输入 Pull Request 或 Merge Request 地址",
+      )
+
+      return
+    }
+
     resolveMutation.reset()
-    resolveMutation.mutate()
+
+    resolveMutation.mutate(
+      nextSourceUrl,
+    )
   }
 
   const handleClear = () => {
     setSourceUrl("")
+    setPullRequestNumber("")
+    setInputError(null)
+
     resolveMutation.reset()
     onClear()
   }
 
+  const handleUseDifferentRepository =
+    () => {
+      handleClear()
+
+      setUseRepositoryPrefill(
+        false,
+      )
+    }
+
+  const handleRestoreRepositoryPrefill =
+    () => {
+      handleClear()
+
+      setUseRepositoryPrefill(
+        true,
+      )
+    }
+
+  const repositoryPullRequestReady =
+    /^[1-9]\d*$/.test(
+      pullRequestNumber.trim(),
+    )
+
   const canSubmit =
-    Boolean(sourceUrl.trim()) &&
+    (
+      useRepositoryPrefill &&
+      repositoryPrefill
+        ? repositoryPullRequestReady
+        : Boolean(
+            sourceUrl.trim(),
+          )
+    ) &&
     !disabled &&
     !resolveMutation.isPending
 
@@ -165,45 +302,146 @@ export function CodeReviewSourceImportPanel({
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
       <div>
         <h3 className="font-medium text-slate-900">
-          从 Pull Request / Merge
-          Request 导入
+          {useRepositoryPrefill &&
+          repositoryPrefill
+            ? "审查该仓库的 Pull Request"
+            : "从 Pull Request / Merge Request 导入"}
         </h3>
 
         <p className="mt-1 text-sm leading-6 text-slate-500">
-          支持公开 GitHub PR 和
-          GitLab MR。导入成功后会自动填充
-          Git Diff，不会保存访问令牌。
+          {useRepositoryPrefill &&
+          repositoryPrefill
+            ? "仓库信息已经从仓库分析任务自动带入，只需要填写 Pull Request 编号。"
+            : "支持公开 GitHub PR 和 GitLab MR。导入成功后会自动填充 Git Diff，不会保存访问令牌。"}
         </p>
       </div>
+
+      {useRepositoryPrefill &&
+      repositoryPrefill ? (
+        <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-xs font-medium text-blue-600">
+                来自仓库分析
+              </div>
+
+              <div className="mt-1 break-all font-medium text-slate-900">
+                {formatRepositoryReviewName(
+                  repositoryPrefill,
+                )}
+              </div>
+
+              <a
+                href={
+                  repositoryPrefill
+                    .repositoryUrl
+                }
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 inline-flex break-all text-sm text-blue-600 hover:underline"
+              >
+                {
+                  repositoryPrefill
+                    .repositoryUrl
+                }
+              </a>
+
+              {repositoryPrefill
+                .resolvedCommitSha ? (
+                <div className="mt-2 font-mono text-xs text-slate-500">
+                  分析 Commit：
+                  {repositoryPrefill
+                    .resolvedCommitSha
+                    .slice(0, 12)}
+                </div>
+              ) : null}
+            </div>
+
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={
+                handleUseDifferentRepository
+              }
+              className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-sm text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              更换仓库
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <form
         className="mt-4 flex flex-col gap-3 sm:flex-row"
         onSubmit={handleSubmit}
       >
-        <input
-          type="url"
-          value={sourceUrl}
-          onChange={(event) => {
-            setSourceUrl(
-              event.target.value,
-            )
+        {useRepositoryPrefill &&
+        repositoryPrefill ? (
+          <div className="flex min-w-0 flex-1 items-center overflow-hidden rounded-lg border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100">
+            <span className="border-r border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+              PR #
+            </span>
 
-            if (
-              resolveMutation.isError
-            ) {
-              resolveMutation.reset()
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              aria-label="Pull Request 编号"
+              value={
+                pullRequestNumber
+              }
+              onChange={(event) => {
+                setPullRequestNumber(
+                  event.target.value.replace(
+                    /\D/g,
+                    "",
+                  ),
+                )
+
+                setInputError(null)
+
+                if (
+                  resolveMutation.isError
+                ) {
+                  resolveMutation.reset()
+                }
+              }}
+              placeholder="例如：123"
+              disabled={
+                disabled ||
+                resolveMutation.isPending
+              }
+              className="min-w-0 flex-1 px-3 py-2 text-sm text-slate-900 outline-none disabled:cursor-not-allowed disabled:bg-slate-100"
+            />
+          </div>
+        ) : (
+          <input
+            type="url"
+            value={sourceUrl}
+            onChange={(event) => {
+              setSourceUrl(
+                event.target.value,
+              )
+
+              setInputError(null)
+
+              if (
+                resolveMutation.isError
+              ) {
+                resolveMutation.reset()
+              }
+            }}
+            placeholder={
+              "https://github.com/" +
+              "owner/repo/pull/123"
             }
-          }}
-          placeholder={
-            "https://github.com/" +
-            "owner/repo/pull/123"
-          }
-          disabled={
-            disabled ||
-            resolveMutation.isPending
-          }
-          className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100"
-        />
+            disabled={
+              disabled ||
+              resolveMutation.isPending
+            }
+            className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus-within:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+          />
+        )}
 
         <button
           type="submit"
@@ -216,7 +454,25 @@ export function CodeReviewSourceImportPanel({
         </button>
       </form>
 
-      {resolveMutation.isError ? (
+      {repositoryPrefill &&
+      !useRepositoryPrefill &&
+      !resolvedSource ? (
+        <button
+          type="button"
+          className="mt-3 text-sm font-medium text-blue-600 hover:underline"
+          onClick={
+            handleRestoreRepositoryPrefill
+          }
+        >
+          恢复使用仓库分析中的仓库
+        </button>
+      ) : null}
+
+      {inputError ? (
+        <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+          {inputError}
+        </div>
+      ) : resolveMutation.isError ? (
         <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
           {formatSourceApiError(
             resolveMutation.error,

@@ -1,12 +1,27 @@
 export const readField = <T>(
-  item: any,
+  item: unknown,
   snakeName: string,
   camelName: string,
   fallback: T,
 ): T => {
-  const value = item?.[snakeName] ?? item?.[camelName]
+  if (
+    !item
+    || typeof item !== "object"
+  ) {
+    return fallback
+  }
 
-  if (value === null || value === undefined) {
+  const record =
+    item as Record<string, unknown>
+
+  const value =
+    record[snakeName]
+    ?? record[camelName]
+
+  if (
+    value === null
+    || value === undefined
+  ) {
     return fallback
   }
 
@@ -14,67 +29,95 @@ export const readField = <T>(
 }
 
 export const readArrayField = <T>(
-  item: any,
+  item: unknown,
   snakeName: string,
   camelName: string,
+  fallback: T[] = [],
 ): T[] => {
-  const value = item?.[snakeName] ?? item?.[camelName]
+  const value = readField<unknown>(
+    item,
+    snakeName,
+    camelName,
+    fallback,
+  )
 
-  if (!Array.isArray(value)) {
-    return []
-  }
-
-  return value as T[]
+  return Array.isArray(value)
+    ? value as T[]
+    : fallback
 }
 
 export const readNumberField = (
-  item: any,
+  item: unknown,
   snakeName: string,
   camelName: string,
+  fallback: number | null = null,
 ): number | null => {
-  const value = item?.[snakeName] ?? item?.[camelName]
+  const value = readField<unknown>(
+    item,
+    snakeName,
+    camelName,
+    fallback,
+  )
 
-  if (typeof value !== "number") {
-    return null
-  }
-
-  return value
+  return typeof value === "number"
+    && Number.isFinite(value)
+    ? value
+    : fallback
 }
 
-export const getToolName = (toolCall: any) =>
-  readField<string>(toolCall, "tool_name", "toolName", "-")
+export const getToolName = (
+  toolCall: unknown,
+) =>
+  readField<string>(
+    toolCall,
+    "tool_name",
+    "toolName",
+    "-",
+  )
 
-export const getToolSuccess = (toolCall: any) =>
-  readField<boolean>(toolCall, "success", "success", false)
+export const getToolSuccess = (
+  toolCall: unknown,
+) =>
+  readField<boolean>(
+    toolCall,
+    "success",
+    "success",
+    false,
+  )
 
 export const getSummaryValue = <T>(
-  summary: any,
+  summary: unknown,
   snakeName: string,
   camelName: string,
   fallback: T,
 ): T => {
-  const value = summary?.[snakeName] ?? summary?.[camelName]
-
-  if (value === null || value === undefined) {
-    return fallback
-  }
-
-  return value as T
+  return readField<T>(
+    summary,
+    snakeName,
+    camelName,
+    fallback,
+  )
 }
 
 export const downloadTextFile = ({
   filename,
   content,
-  mimeType = "text/markdown;charset=utf-8",
+  mimeType =
+    "text/markdown;charset=utf-8",
 }: {
   filename: string
   content: string
   mimeType?: string
 }) => {
-  const blob = new Blob([content], { type: mimeType })
-  const url = URL.createObjectURL(blob)
+  const blob = new Blob(
+    [content],
+    { type: mimeType },
+  )
+  const url =
+    URL.createObjectURL(blob)
 
-  const link = document.createElement("a")
+  const link =
+    document.createElement("a")
   link.href = url
   link.download = filename
   document.body.appendChild(link)
@@ -93,17 +136,31 @@ export const downloadBase64File = ({
   contentBase64: string
   mimeType: string
 }) => {
-  const binaryString = window.atob(contentBase64)
-  const bytes = new Uint8Array(binaryString.length)
+  const binaryString =
+    window.atob(contentBase64)
+  const bytes =
+    new Uint8Array(
+      binaryString.length,
+    )
 
-  for (let index = 0; index < binaryString.length; index += 1) {
-    bytes[index] = binaryString.charCodeAt(index)
+  for (
+    let index = 0;
+    index < binaryString.length;
+    index += 1
+  ) {
+    bytes[index] =
+      binaryString.charCodeAt(index)
   }
 
-  const blob = new Blob([bytes], { type: mimeType })
-  const url = URL.createObjectURL(blob)
+  const blob = new Blob(
+    [bytes],
+    { type: mimeType },
+  )
+  const url =
+    URL.createObjectURL(blob)
 
-  const link = document.createElement("a")
+  const link =
+    document.createElement("a")
   link.href = url
   link.download = filename
   document.body.appendChild(link)

@@ -15,6 +15,9 @@ from app.services.repository_snapshot_lifecycle import (
     RepositorySnapshotRetentionPolicy,
     sweep_repository_snapshots,
 )
+from app.services.repository_analysis_task import (
+    expire_repository_analysis_tasks,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -37,6 +40,15 @@ def run_snapshot_cleanup_once(
     )
 
     with Session(engine) as session:
+        expired_task_count = 0
+
+        if not dry_run:
+            expired_task_count = (
+                expire_repository_analysis_tasks(
+                    session=session,
+                )
+            )
+
         report = sweep_repository_snapshots(
             session=session,
             policy=policy,

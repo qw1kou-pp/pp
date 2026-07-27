@@ -3,22 +3,61 @@ import uuid
 from pathlib import Path
 from sqlalchemy import or_
 from sqlmodel import Session, col, select
-
+from typing import Any
 from app.models import Document, DocumentChunk, RagChatSource, RagRun
-from app.services.rag import hybrid_retrieve_chunks_for_rag, build_search_terms, count_keyword_matches
+from app.services.rag import (
+    build_rag_chat_source,
+    build_search_terms,
+    count_keyword_matches,
+    hybrid_retrieve_chunks_for_rag,
+)
 from app.services.code_parser import is_code_file
+
+
+def build_document_scope_filters(
+        *,
+        knowledge_base_id: uuid.UUID,
+        repository_analysis_task_id:
+        uuid.UUID | None = None,
+) -> list[Any]:
+  filters: list[Any] = [
+    Document.knowledge_base_id
+    == knowledge_base_id,
+  ]
+
+  if (
+          repository_analysis_task_id
+          is not None
+  ):
+    filters.append(
+      Document.repository_analysis_task_id
+      == repository_analysis_task_id,
+    )
+
+  return filters
 
 
 def list_documents_tool(
     *,
     session: Session,
     knowledge_base_id: uuid.UUID,
+    repository_analysis_task_id:
+        uuid.UUID | None = None,
     limit: int = 20,
 ) -> str:
     statement = (
-        select(Document)
-        .where(Document.knowledge_base_id == knowledge_base_id)
-        .order_by(col(Document.created_at).desc())
+      select(Document)
+        .where(
+        *build_document_scope_filters(
+          knowledge_base_id=
+          knowledge_base_id,
+          repository_analysis_task_id=
+          repository_analysis_task_id,
+        ),
+      )
+        .order_by(
+        col(Document.created_at).desc(),
+      )
         .limit(limit)
     )
 
@@ -30,8 +69,12 @@ def list_documents_tool(
     lines = ["当前知识库包含以下文档："]
 
     for index, document in enumerate(documents, start=1):
+        filename = (
+                document.repository_relative_path
+                or document.original_filename
+        )
         lines.append(
-            f"{index}. {document.original_filename} "
+            f"{index}. {filename} "
             f"(document_id={document.id})"
         )
 
@@ -46,6 +89,7 @@ def search_knowledge_base_tool(
     top_k: int,
     semantic_weight: float,
     keyword_weight: float,
+    repository_analysis_task_id: uuid.UUID | None = None,
 ) -> tuple[str, list[RagChatSource]]:
     rows = hybrid_retrieve_chunks_for_rag(
         session=session,
@@ -54,21 +98,25 @@ def search_knowledge_base_tool(
         top_k=top_k,
         semantic_weight=semantic_weight,
         keyword_weight=keyword_weight,
+        repository_analysis_task_id=
+        repository_analysis_task_id,
     )
 
     sources = [
-        RagChatSource(
-            document_id=document.id,
-            original_filename=document.original_filename,
-            chunk_id=chunk.id,
-            chunk_index=chunk.chunk_index,
-            content=chunk.content,
-            content_length=chunk.content_length,
+        build_rag_chat_source(
+            chunk=chunk,
+            document=document,
             match_count=match_count,
             similarity=similarity,
             retrieval_type="hybrid",
         )
-        for chunk, document, similarity, match_count, hybrid_score in rows
+        for (
+            chunk,
+            document,
+            similarity,
+            match_count,
+            hybrid_score,
+        ) in rows
     ]
 
     if not sources:
@@ -77,6 +125,11 @@ def search_knowledge_base_tool(
     lines = [f"检索到 {len(sources)} 条相关资料："]
 
     for index, source in enumerate(sources, start=1):
+        source_path = (
+                source.repository_relative_path
+                or source.original_filename
+        )
+
         similarity_text = (
             f"{source.similarity:.4f}"
             if source.similarity is not None
@@ -84,7 +137,7 @@ def search_knowledge_base_tool(
         )
 
         lines.append(
-            f"[资料 {index}] 文件：{source.original_filename}，"
+            f"[资料 {index}] 文件：{source_path}，"
             f"Chunk：{source.chunk_index}，"
             f"相似度：{similarity_text}，"
             f"关键词命中：{source.match_count}\n"
@@ -101,13 +154,21 @@ def read_document_chunks_tool(
     document_id: uuid.UUID,
     center_chunk_index: int,
     window: int = 1,
+    repository_analysis_task_id: uuid.UUID | None = None,
 ) -> tuple[str, list[RagChatSource]]:
     window = max(0, min(window, 5))
 
     document_statement = (
         select(Document)
-        .where(Document.id == document_id)
-        .where(Document.knowledge_base_id == knowledge_base_id)
+            .where(Document.id == document_id)
+            .where(
+            *build_document_scope_filters(
+                knowledge_base_id=
+                knowledge_base_id,
+                repository_analysis_task_id=
+                repository_analysis_task_id,
+            ),
+        )
     )
 
     document = session.exec(document_statement).first()
@@ -135,16 +196,13 @@ def read_document_chunks_tool(
         ), []
 
     sources = [
-        RagChatSource(
-            document_id=document.id,
-            original_filename=document.original_filename,
-            chunk_id=chunk.id,
-            chunk_index=chunk.chunk_index,
-            content=chunk.content,
-            content_length=chunk.content_length,
+        build_rag_chat_source(
+            chunk=chunk,
+            document=document,
             match_count=0,
             similarity=None,
-            retrieval_type="document_window",
+            retrieval_type=
+            "document_window",
         )
         for chunk in chunks
     ]
@@ -214,7 +272,32 @@ def search_rag_history_tool(
     knowledge_base_id: uuid.UUID,
     query: str,
     limit: int = 10,
+    repository_analysis_task_id:
+        uuid.UUID | None = None,
 ) -> str:
+    filters = [
+        RagRun.knowledge_base_id
+        == knowledge_base_id,
+    ]
+
+    if (
+            repository_analysis_task_id
+            is None
+    ):
+        filters.append(
+            col(
+                RagRun
+                    .repository_analysis_task_id
+            ).is_(
+                None,
+            ),
+        )
+    else:
+        filters.append(
+            RagRun
+            .repository_analysis_task_id
+            == repository_analysis_task_id,
+        )
     keywords = extract_history_keywords(query)
 
     statement = (
@@ -277,41 +360,97 @@ def summarize_document_tool(
     document_id: uuid.UUID | None = None,
     filename_keyword: str | None = None,
     max_chunks: int = 5,
+    repository_analysis_task_id: uuid.UUID | None = None,
 ) -> tuple[str, list[RagChatSource]]:
     max_chunks = max(1, min(max_chunks, 20))
 
     document = None
 
+    document: Document | None = None
+
     if document_id is not None:
         document_statement = (
             select(Document)
-            .where(Document.id == document_id)
-            .where(Document.knowledge_base_id == knowledge_base_id)
+                .where(
+                Document.id == document_id,
+            )
+                .where(
+                *build_document_scope_filters(
+                    knowledge_base_id=knowledge_base_id,
+                    repository_analysis_task_id=(
+                        repository_analysis_task_id
+                    ),
+                ),
+            )
         )
-        document = session.exec(document_statement).first()
 
-    if document is None and filename_keyword:
-        keyword_pattern = f"%{filename_keyword.strip()}%"
+        document = session.exec(
+            document_statement,
+        ).first()
+
+    elif filename_keyword:
+        keyword_pattern = (
+            f"%{filename_keyword.strip()}%"
+        )
 
         document_statement = (
             select(Document)
-            .where(Document.knowledge_base_id == knowledge_base_id)
-            .where(col(Document.original_filename).ilike(keyword_pattern))
-            .order_by(col(Document.created_at).desc())
-            .limit(1)
+                .where(
+                *build_document_scope_filters(
+                    knowledge_base_id=knowledge_base_id,
+                    repository_analysis_task_id=(
+                        repository_analysis_task_id
+                    ),
+                ),
+            )
+                .where(
+                or_(
+                    col(
+                        Document.original_filename,
+                    ).ilike(
+                        keyword_pattern,
+                    ),
+                    col(
+                        Document.repository_relative_path,
+                    ).ilike(
+                        keyword_pattern,
+                    ),
+                ),
+            )
+                .order_by(
+                col(
+                    Document.created_at,
+                ).desc(),
+            )
+                .limit(1)
         )
 
-        document = session.exec(document_statement).first()
+        document = session.exec(
+            document_statement,
+        ).first()
 
-    if document is None:
+    else:
         document_statement = (
             select(Document)
-            .where(Document.knowledge_base_id == knowledge_base_id)
-            .order_by(col(Document.created_at).desc())
-            .limit(1)
+                .where(
+                *build_document_scope_filters(
+                    knowledge_base_id=knowledge_base_id,
+                    repository_analysis_task_id=(
+                        repository_analysis_task_id
+                    ),
+                ),
+            )
+                .order_by(
+                col(
+                    Document.created_at,
+                ).desc(),
+            )
+                .limit(1)
         )
 
-        document = session.exec(document_statement).first()
+        document = session.exec(
+            document_statement,
+        ).first()
 
     if document is None:
         return "当前知识库下没有可总结的文档。", []
@@ -334,14 +473,29 @@ def summarize_document_tool(
     sources = [
         RagChatSource(
             document_id=document.id,
-            original_filename=document.original_filename,
+            original_filename=(
+                document.original_filename
+            ),
+            repository_analysis_task_id=(
+                document.repository_analysis_task_id
+            ),
+            repository_relative_path=(
+                document.repository_relative_path
+            ),
+            source_commit_sha=(
+                document.source_commit_sha
+            ),
             chunk_id=chunk.id,
             chunk_index=chunk.chunk_index,
             content=chunk.content,
-            content_length=chunk.content_length,
+            content_length=(
+                chunk.content_length
+            ),
             match_count=0,
             similarity=None,
-            retrieval_type="document_summary",
+            retrieval_type=(
+                "document_summary"
+            ),
         )
         for chunk in chunks
     ]
@@ -371,33 +525,78 @@ def build_sources_context(
     sources: list[RagChatSource],
 ) -> str:
     if not sources:
-        return "无可用知识库资料。"
+        return "当前没有检索到可用资料。"
 
-    context_parts = []
+    context_parts: list[str] = []
 
-    for index, source in enumerate(sources, start=1):
-        context_parts.append(
-            f"[资料 {index}]\n"
-            f"来源文件：{source.original_filename}\n"
-            f"Chunk：{source.chunk_index}\n"
-            f"内容：\n{source.content}"
+    for index, source in enumerate(
+        sources,
+        start=1,
+    ):
+        source_path = (
+            source.repository_relative_path
+            or source.original_filename
         )
 
-    return "\n\n".join(context_parts)
+        metadata_lines = [
+            f"来源文件：{source_path}",
+            f"Chunk：{source.chunk_index}",
+        ]
+
+        if source.source_commit_sha:
+            metadata_lines.append(
+                "Commit："
+                f"{source.source_commit_sha}",
+            )
+
+        if (
+            source.repository_analysis_task_id
+            is not None
+        ):
+            metadata_lines.append(
+                "仓库分析任务："
+                f"{source.repository_analysis_task_id}",
+            )
+
+        metadata_text = "\n".join(
+            metadata_lines,
+        )
+
+        context_parts.append(
+            f"[资料 {index}]\n"
+            f"{metadata_text}\n"
+            "内容：\n"
+            f"{source.content}"
+        )
+
+    return "\n\n".join(
+        context_parts,
+    )
 
 
 def list_code_files_tool(
     *,
-    session,
-    knowledge_base_id,
+    session: Session,
+    knowledge_base_id: uuid.UUID,
+    repository_analysis_task_id:
+        uuid.UUID | None = None,
     limit: int = 200,
     language: str | None = None,
 ) -> str:
     statement = (
         select(Document)
-        .where(Document.knowledge_base_id == knowledge_base_id)
-        .order_by(col(Document.original_filename))
-        .limit(limit * 3)
+            .where(
+            *build_document_scope_filters(
+                knowledge_base_id=
+                knowledge_base_id,
+                repository_analysis_task_id=
+                repository_analysis_task_id,
+            ),
+        )
+            .order_by(
+            col(Document.original_filename),
+        )
+            .limit(limit * 3)
     )
 
     documents = session.exec(statement).all()
@@ -527,6 +726,7 @@ def search_code_tool(
     keyword_weight: float = 0.25,
     language: str | None = None,
     filename_keyword: str | None = None,
+    repository_analysis_task_id: uuid.UUID | None = None,
 ) -> tuple[str, list[RagChatSource]]:
     query = query.strip()
 
@@ -537,13 +737,20 @@ def search_code_tool(
 
     search_limit = max(top_k * 5, 20)
 
-    hybrid_rows = hybrid_retrieve_chunks_for_rag(
-        session=session,
-        knowledge_base_id=knowledge_base_id,
-        query=query,
-        top_k=search_limit,
-        semantic_weight=semantic_weight,
-        keyword_weight=keyword_weight,
+    hybrid_rows = (
+        hybrid_retrieve_chunks_for_rag(
+            session=session,
+            knowledge_base_id=
+            knowledge_base_id,
+            query=query,
+            top_k=search_limit,
+            semantic_weight=
+            semantic_weight,
+            keyword_weight=
+            keyword_weight,
+            repository_analysis_task_id=
+            repository_analysis_task_id,
+        )
     )
 
     sources: list[RagChatSource] = []
@@ -561,17 +768,14 @@ def search_code_tool(
             continue
 
         sources.append(
-            RagChatSource(
-                document_id=document.id,
-                original_filename=document.original_filename,
-                chunk_id=chunk.id,
-                chunk_index=chunk.chunk_index,
-                content=chunk.content,
-                content_length=chunk.content_length,
+            build_rag_chat_source(
+                chunk=chunk,
+                document=document,
                 match_count=match_count,
                 similarity=similarity,
-                retrieval_type="code_hybrid",
-            )
+                retrieval_type=
+                "code_hybrid",
+            ),
         )
 
         seen_chunk_ids.add(chunk.id)
@@ -593,6 +797,14 @@ def search_code_tool(
                 select(DocumentChunk, Document)
                 .join(Document, Document.id == DocumentChunk.document_id)
                 .where(DocumentChunk.knowledge_base_id == knowledge_base_id)
+                .where(
+                    *build_document_scope_filters(
+                        knowledge_base_id=
+                        knowledge_base_id,
+                        repository_analysis_task_id=
+                        repository_analysis_task_id,
+                    ),
+                )
                 .where(or_(*search_conditions))
                 .order_by(col(Document.original_filename), col(DocumentChunk.chunk_index))
                 .limit(search_limit)
@@ -614,17 +826,14 @@ def search_code_tool(
                 match_count = count_keyword_matches(chunk.content, terms)
 
                 sources.append(
-                    RagChatSource(
-                        document_id=document.id,
-                        original_filename=document.original_filename,
-                        chunk_id=chunk.id,
-                        chunk_index=chunk.chunk_index,
-                        content=chunk.content,
-                        content_length=chunk.content_length,
+                    build_rag_chat_source(
+                        chunk=chunk,
+                        document=document,
                         match_count=match_count,
                         similarity=None,
-                        retrieval_type="code_keyword",
-                    )
+                        retrieval_type=
+                        "code_keyword",
+                    ),
                 )
 
                 seen_chunk_ids.add(chunk.id)
@@ -687,6 +896,7 @@ def read_code_file_tool(
     filename_keyword: str | None = None,
     max_chunks: int = 50,
     max_chars: int = 20000,
+    repository_analysis_task_id: uuid.UUID | None = None,
 ) -> tuple[str, list[RagChatSource]]:
     max_chunks = max(1, min(int(max_chunks), 200))
     max_chars = max(1000, min(int(max_chars), 50000))
@@ -696,8 +906,15 @@ def read_code_file_tool(
     if document_id is not None:
         statement = (
             select(Document)
-            .where(Document.id == document_id)
-            .where(Document.knowledge_base_id == knowledge_base_id)
+                .where(Document.id == document_id)
+                .where(
+                *build_document_scope_filters(
+                    knowledge_base_id=
+                    knowledge_base_id,
+                    repository_analysis_task_id=
+                    repository_analysis_task_id,
+                ),
+            )
         )
 
         document = session.exec(statement).first()
@@ -713,8 +930,17 @@ def read_code_file_tool(
 
         statement = (
             select(Document)
-            .where(Document.knowledge_base_id == knowledge_base_id)
-            .order_by(col(Document.original_filename))
+                .where(
+                *build_document_scope_filters(
+                    knowledge_base_id=
+                    knowledge_base_id,
+                    repository_analysis_task_id=
+                    repository_analysis_task_id,
+                ),
+            )
+                .order_by(
+                col(Document.original_filename),
+            )
         )
 
         documents = session.exec(statement).all()
@@ -776,17 +1002,14 @@ def read_code_file_tool(
 
     for chunk in chunks:
         sources.append(
-            RagChatSource(
-                document_id=document.id,
-                original_filename=document.original_filename,
-                chunk_id=chunk.id,
-                chunk_index=chunk.chunk_index,
-                content=chunk.content,
-                content_length=chunk.content_length,
+            build_rag_chat_source(
+                chunk=chunk,
+                document=document,
                 match_count=0,
                 similarity=None,
-                retrieval_type="code_file_read",
-            )
+                retrieval_type=
+                "code_file_read",
+            ),
         )
 
     lines = [
@@ -884,6 +1107,7 @@ def find_code_references_tool(
     language: str | None = None,
     filename_keyword: str | None = None,
     limit: int = 50,
+    repository_analysis_task_id: uuid.UUID | None = None,
 ) -> tuple[str, list[RagChatSource]]:
     symbol_name = symbol_name.strip()
 
@@ -903,6 +1127,14 @@ def find_code_references_tool(
                 col(DocumentChunk.content).ilike(pattern),
                 col(Document.original_filename).ilike(pattern),
             )
+        )
+        .where(
+            *build_document_scope_filters(
+                knowledge_base_id=
+                knowledge_base_id,
+                repository_analysis_task_id=
+                repository_analysis_task_id,
+            ),
         )
         .order_by(col(Document.original_filename), col(DocumentChunk.chunk_index))
         .limit(limit * 5)
@@ -945,17 +1177,14 @@ def find_code_references_tool(
             continue
 
         sources.append(
-            RagChatSource(
-                document_id=document.id,
-                original_filename=document.original_filename,
-                chunk_id=chunk.id,
-                chunk_index=chunk.chunk_index,
-                content=chunk.content,
-                content_length=chunk.content_length,
+            build_rag_chat_source(
+                chunk=chunk,
+                document=document,
                 match_count=occurrence_count,
                 similarity=None,
-                retrieval_type="code_reference",
-            )
+                retrieval_type=
+                "code_reference",
+            ),
         )
 
         seen_chunk_ids.add(chunk.id)
