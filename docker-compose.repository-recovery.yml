@@ -1,0 +1,14 @@
+services:
+  repository-analysis-fault-worker:
+    extends:
+      file: docker-compose.yml
+      service: repository-analysis-worker
+    profiles:
+      - acceptance
+    restart: "no"
+    environment:
+      REPOSITORY_ANALYSIS_FAULT_INJECTION_ENABLED: "1"
+      REPOSITORY_ANALYSIS_FAULT_TASK_ID: ${REPOSITORY_ANALYSIS_FAULT_TASK_ID:-}
+      REPOSITORY_ANALYSIS_FAULT_POINT: ${REPOSITORY_ANALYSIS_FAULT_POINT:-}
+      REPOSITORY_ANALYSIS_FAULT_MODE: ${REPOSITORY_ANALYSIS_FAULT_MODE:-}
+      REPOSITORY_ANALYSIS_FAULT_EXIT_AFTER_TRIGGER: "1"

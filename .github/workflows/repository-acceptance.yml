@@ -1,0 +1,367 @@
+name: Repository Acceptance
+
+on:
+  pull_request:
+  schedule:
+    - cron: "0 2 * * 1"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Acceptance scope
+        required: true
+        default: smoke
+        type: choice
+        options:
+          - smoke
+          - all
+          - repository
+      repository:
+        description: Repository case used when mode=repository
+        required: true
+        default: requests
+        type: choice
+        options:
+          - requests
+          - fastapi
+          - zustand
+          - full-stack-fastapi-template
+
+permissions:
+  contents: read
+
+concurrency:
+  group: >-
+    repository-acceptance-${{ github.event_name }}-${{ github.ref }}-${{
+    inputs.mode || 'automatic' }}
+  cancel-in-progress: false
+
+jobs:
+  repository-acceptance:
+    name: Live repository acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    # Pull requests from forks do not receive repository secrets. Internal PRs,
+    # scheduled runs, and manual runs execute the live GitHub acceptance suite.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.fork == false
+    env:
+      CI: "true"
+      COMPOSE_PROJECT_NAME: repository-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+      RUN_REPOSITORY_ACCEPTANCE_LIVE: "1"
+      REPOSITORY_ACCEPTANCE_BASE_URL: http://backend:8000
+      REPOSITORY_ACCEPTANCE_OUTPUT_DIR: /tmp/repository-acceptance
+      REPOSITORY_ACCEPTANCE_POLL_INTERVAL_SECONDS: "2"
+      REPOSITORY_ACCEPTANCE_REQUEST_TIMEOUT_SECONDS: "60"
+      REPOSITORY_ACCEPTANCE_EMAIL: ${{ secrets.REPOSITORY_ACCEPTANCE_EMAIL }}
+      REPOSITORY_ACCEPTANCE_PASSWORD: ${{ secrets.REPOSITORY_ACCEPTANCE_PASSWORD }}
+      GITHUB_TOKEN: ${{ secrets.REPOSITORY_ACCEPTANCE_GITHUB_TOKEN }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_API_BASE: ${{ secrets.LLM_API_BASE }}
+      LLM_MODEL: ${{ secrets.LLM_MODEL }}
+      EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
+      EMBEDDING_API_BASE: ${{ secrets.EMBEDDING_API_BASE }}
+      EMBEDDING_MODEL: ${{ secrets.EMBEDDING_MODEL }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Validate and mask live-test secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_names=(
+            REPOSITORY_ACCEPTANCE_EMAIL
+            REPOSITORY_ACCEPTANCE_PASSWORD
+            GITHUB_TOKEN
+            LLM_API_KEY
+            LLM_API_BASE
+            LLM_MODEL
+            EMBEDDING_API_KEY
+            EMBEDDING_API_BASE
+            EMBEDDING_MODEL
+          )
+
+          missing=()
+          for name in "${required_names[@]}"; do
+            value="${!name:-}"
+            if [[ -z "$value" ]]; then
+              missing+=("$name")
+            else
+              echo "::add-mask::$value"
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required repository acceptance secrets: %s\n' "${missing[*]}" >&2
+            exit 2
+          fi
+
+      - name: Create CI environment file
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+
+          import os
+          from pathlib import Path
+
+
+          def quote_dotenv(value: str) -> str:
+              escaped = (
+                  value.replace("\\", "\\\\")
+                  .replace("\n", "\\n")
+                  .replace('"', '\\"')
+              )
+              return f'"{escaped}"'
+
+
+          values = {
+              "PROJECT_NAME": "RepoGuard Repository Acceptance",
+              "STACK_NAME": os.environ["COMPOSE_PROJECT_NAME"],
+              "DOMAIN": "localhost",
+              "FRONTEND_HOST": "http://localhost:5173",
+              "ENVIRONMENT": "local",
+              "BACKEND_CORS_ORIGINS": "http://localhost,http://localhost:5173",
+              "SECRET_KEY": "repository-acceptance-ci-secret-key",
+              "FIRST_SUPERUSER": os.environ["REPOSITORY_ACCEPTANCE_EMAIL"],
+              "FIRST_SUPERUSER_PASSWORD": os.environ[
+                  "REPOSITORY_ACCEPTANCE_PASSWORD"
+              ],
+              "POSTGRES_SERVER": "db",
+              "POSTGRES_PORT": "5432",
+              "POSTGRES_DB": "app",
+              "POSTGRES_USER": "postgres",
+              "POSTGRES_PASSWORD": "repository-acceptance-postgres",
+              "DOCKER_IMAGE_BACKEND": "backend",
+              "DOCKER_IMAGE_FRONTEND": "frontend",
+              "GITHUB_TOKEN": os.environ["GITHUB_TOKEN"],
+              "LLM_API_KEY": os.environ["LLM_API_KEY"],
+              "LLM_API_BASE": os.environ["LLM_API_BASE"],
+              "LLM_MODEL": os.environ["LLM_MODEL"],
+              "EMBEDDING_API_KEY": os.environ["EMBEDDING_API_KEY"],
+              "EMBEDDING_API_BASE": os.environ["EMBEDDING_API_BASE"],
+              "EMBEDDING_MODEL": os.environ["EMBEDDING_MODEL"],
+          }
+
+          content = "".join(
+              f"{name}={quote_dotenv(value)}\n"
+              for name, value in values.items()
+          )
+          Path(".env").write_text(content, encoding="utf-8")
+          PY
+
+      - name: Build and start acceptance services
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose up -d --build \
+            db \
+            backend \
+            repository-analysis-worker \
+            repository-analysis-recovery \
+            repository-snapshot-cleaner
+
+      - name: Wait for backend and workers
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          services=(
+            backend
+            repository-analysis-worker
+            repository-analysis-recovery
+            repository-snapshot-cleaner
+          )
+
+          ready=0
+          for attempt in $(seq 1 120); do
+            all_running=1
+            for service in "${services[@]}"; do
+              container_id="$(docker compose ps -q "$service")"
+              if [[ -z "$container_id" ]]; then
+                all_running=0
+                break
+              fi
+              running="$(docker inspect -f '{{.State.Running}}' "$container_id")"
+              if [[ "$running" != "true" ]]; then
+                all_running=0
+                break
+              fi
+            done
+
+            if [[ "$all_running" == "1" ]] && \
+              curl --fail --silent --show-error \
+                http://localhost:8000/api/v1/utils/health-check/ \
+                >/dev/null; then
+              ready=1
+              break
+            fi
+
+            echo "Waiting for acceptance services ($attempt/120)..."
+            sleep 5
+          done
+
+          docker compose ps
+          if [[ "$ready" != "1" ]]; then
+            echo "Acceptance services did not become ready" >&2
+            exit 1
+          fi
+
+      - name: Select acceptance scope
+        id: selection
+        shell: bash
+        env:
+          MANUAL_MODE: ${{ inputs.mode }}
+          MANUAL_REPOSITORY: ${{ inputs.repository }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            args="--smoke"
+            run_name="repository-smoke"
+          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+            args="--all"
+            run_name="repository-matrix"
+          else
+            case "$MANUAL_MODE" in
+              smoke)
+                args="--smoke"
+                run_name="repository-smoke"
+                ;;
+              all)
+                args="--all"
+                run_name="repository-matrix"
+                ;;
+              repository)
+                args="--repository $MANUAL_REPOSITORY"
+                run_name="repository-$MANUAL_REPOSITORY"
+                ;;
+              *)
+                echo "Unsupported manual mode: $MANUAL_MODE" >&2
+                exit 2
+                ;;
+            esac
+          fi
+
+          echo "args=$args" >> "$GITHUB_OUTPUT"
+          echo "run_name=$run_name" >> "$GITHUB_OUTPUT"
+
+      - name: Run live repository acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf artifacts/repository-acceptance
+          mkdir -p artifacts/repository-acceptance
+
+          set +e
+          docker compose exec -T \
+            -e RUN_REPOSITORY_ACCEPTANCE_LIVE \
+            -e REPOSITORY_ACCEPTANCE_BASE_URL \
+            -e REPOSITORY_ACCEPTANCE_EMAIL \
+            -e REPOSITORY_ACCEPTANCE_PASSWORD \
+            -e GITHUB_TOKEN \
+            backend \
+            python scripts/run_repository_acceptance.py \
+              ${{ steps.selection.outputs.args }} \
+              --output-dir /tmp/repository-acceptance \
+              --run-name "${{ steps.selection.outputs.run_name }}"
+          acceptance_status=$?
+          set -e
+
+          docker compose cp \
+            backend:/tmp/repository-acceptance/. \
+            artifacts/repository-acceptance/ \
+            || true
+
+          exit "$acceptance_status"
+
+      - name: Collect redacted service logs
+        if: always()
+        shell: bash
+        env:
+          REDACTION_VALUES: |
+            ${{ secrets.REPOSITORY_ACCEPTANCE_PASSWORD }}
+            ${{ secrets.REPOSITORY_ACCEPTANCE_GITHUB_TOKEN }}
+            ${{ secrets.LLM_API_KEY }}
+            ${{ secrets.EMBEDDING_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/repository-acceptance/service-logs
+          docker compose ps \
+            > artifacts/repository-acceptance/service-logs/compose-ps.txt \
+            2>&1 || true
+
+          raw_log_dir="$RUNNER_TEMP/repository-acceptance-logs"
+          rm -rf "$raw_log_dir"
+          mkdir -p "$raw_log_dir"
+
+          services=(
+            db
+            backend
+            repository-analysis-worker
+            repository-analysis-recovery
+            repository-snapshot-cleaner
+          )
+          for service in "${services[@]}"; do
+            docker compose logs --no-color --timestamps "$service" \
+              > "$raw_log_dir/$service.log" 2>&1 || true
+          done
+
+          RAW_LOG_DIR="$raw_log_dir" python - <<'PY'
+          from __future__ import annotations
+
+          import os
+          from pathlib import Path
+
+          redactions = sorted(
+              {
+                  value
+                  for value in os.environ.get(
+                      "REDACTION_VALUES",
+                      "",
+                  ).splitlines()
+                  if value
+              },
+              key=len,
+              reverse=True,
+          )
+          raw_dir = Path(os.environ["RAW_LOG_DIR"])
+          output_dir = Path(
+              "artifacts/repository-acceptance/service-logs"
+          )
+
+          for raw_path in raw_dir.glob("*.log"):
+              text = raw_path.read_text(
+                  encoding="utf-8",
+                  errors="replace",
+              )
+              for secret in redactions:
+                  text = text.replace(secret, "***REDACTED***")
+              (output_dir / raw_path.name).write_text(
+                  text,
+                  encoding="utf-8",
+              )
+          PY
+
+      - name: Upload repository acceptance artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: repository-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/repository-acceptance/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stop acceptance services
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose down -v --remove-orphans || true
+          rm -f .env

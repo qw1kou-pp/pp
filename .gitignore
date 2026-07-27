@@ -1,9 +1,55 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.dump
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+backend/.venv/
+
+# Node / frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+dist/
+
+# Test and report output
+test-results/
+playwright-report/
+blob-report/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+playwright/.cache/
+artifacts/
+verification-*.txt
+
+# Runtime storage
+backend/storage/
+storage/
+repository-snapshots/
+
+# Local editor and OS files
 .vscode/*
 !.vscode/extensions.json
-node_modules/
-/test-results/
-/playwright-report/
-/blob-report/
-/playwright/.cache/
-# GitHub App private keys
-secrets/*.pem
+.idea/
+.vs/
+.agents/
+.claude/
+.DS_Store
+Thumbs.db
+
+# Temporary generated patch files
+patches/

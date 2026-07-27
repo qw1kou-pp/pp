@@ -1,0 +1,154 @@
+name: Repository Recovery Acceptance
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Recovery scenario
+        required: true
+        default: all
+        type: choice
+        options:
+          - scan_once
+          - heartbeat
+          - max_attempts
+          - all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-recovery-acceptance
+  cancel-in-progress: false
+
+jobs:
+  recovery-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      RUN_REPOSITORY_RECOVERY_ACCEPTANCE_LIVE: "1"
+      REPOSITORY_ACCEPTANCE_BASE_URL: http://localhost:8000
+      REPOSITORY_ACCEPTANCE_EMAIL: ${{ secrets.REPOSITORY_ACCEPTANCE_EMAIL }}
+      REPOSITORY_ACCEPTANCE_PASSWORD: ${{ secrets.REPOSITORY_ACCEPTANCE_PASSWORD }}
+      GITHUB_TOKEN: ${{ secrets.REPOSITORY_ACCEPTANCE_GITHUB_TOKEN }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_API_BASE: ${{ secrets.LLM_API_BASE }}
+      LLM_MODEL: ${{ secrets.LLM_MODEL }}
+      EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
+      EMBEDDING_API_BASE: ${{ secrets.EMBEDDING_API_BASE }}
+      EMBEDDING_MODEL: ${{ secrets.EMBEDDING_MODEL }}
+      REPOSITORY_RECOVERY_ACCEPTANCE_OUTPUT_DIR: artifacts/repository-recovery-acceptance
+      REPOSITORY_RECOVERY_COMPOSE_FILES: docker-compose.yml,docker-compose.repository-recovery.yml
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install acceptance runner dependencies
+        run: python -m pip install --disable-pip-version-check httpx pyyaml
+
+      - name: Create environment
+        shell: bash
+        run: |
+          cp .env.example .env
+          {
+            echo "REPOSITORY_ACCEPTANCE_EMAIL=${REPOSITORY_ACCEPTANCE_EMAIL}"
+            echo "REPOSITORY_ACCEPTANCE_PASSWORD=${REPOSITORY_ACCEPTANCE_PASSWORD}"
+            echo "GITHUB_TOKEN=${GITHUB_TOKEN}"
+            echo "LLM_API_KEY=${LLM_API_KEY}"
+            echo "LLM_API_BASE=${LLM_API_BASE}"
+            echo "LLM_MODEL=${LLM_MODEL}"
+            echo "EMBEDDING_API_KEY=${EMBEDDING_API_KEY}"
+            echo "EMBEDDING_API_BASE=${EMBEDDING_API_BASE}"
+            echo "EMBEDDING_MODEL=${EMBEDDING_MODEL}"
+          } >> .env
+
+      - name: Start backend and recovery services
+        run: |
+          docker compose up -d \
+            db \
+            backend \
+            repository-analysis-recovery \
+            repository-snapshot-cleaner
+
+      - name: Wait for backend
+        shell: bash
+        run: |
+          for attempt in $(seq 1 120); do
+            if curl --fail --silent \
+              http://localhost:8000/api/v1/utils/health-check/ \
+              >/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose ps --all
+          exit 1
+
+      - name: Run recovery acceptance
+        shell: bash
+        run: |
+          scenario="${{ github.event.inputs.scenario }}"
+          if [ -z "${scenario}" ]; then
+            scenario="all"
+          fi
+          PYTHONPATH=backend python \
+            backend/scripts/run_repository_recovery_acceptance.py \
+            --scenario "${scenario}"
+
+      - name: Collect and redact service logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts/repository-recovery-acceptance/logs
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.repository-recovery.yml \
+            ps --all \
+            > artifacts/repository-recovery-acceptance/logs/compose-ps.txt \
+            2>&1 || true
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.repository-recovery.yml \
+            logs --no-color --timestamps \
+            backend \
+            db \
+            repository-analysis-worker \
+            repository-analysis-recovery \
+            repository-analysis-fault-worker \
+            repository-snapshot-cleaner \
+            > artifacts/repository-recovery-acceptance/logs/services.log \
+            2>&1 || true
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path(
+              "artifacts/repository-recovery-acceptance/logs/services.log"
+          )
+          if path.exists():
+              text = path.read_text(encoding="utf-8", errors="replace")
+              for name in (
+                  "REPOSITORY_ACCEPTANCE_PASSWORD",
+                  "GITHUB_TOKEN",
+                  "LLM_API_KEY",
+                  "EMBEDDING_API_KEY",
+              ):
+                  secret = os.getenv(name, "")
+                  if secret:
+                      text = text.replace(secret, "***REDACTED***")
+              path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Upload recovery acceptance artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: repository-recovery-acceptance
+          path: artifacts/repository-recovery-acceptance
+          retention-days: 14
